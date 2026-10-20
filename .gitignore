@@ -1,0 +1,17 @@
+# Xcode / xcodegen 产物（CI 内 xcodegen generate 现生成）
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+build/
+*.xcarchive
+
+# 工具构建产物
+*.so
+test_runner
+*_swift.txt
+__pycache__/
+*.pyc
+RenderSettings_linux.swift
+
+# 系统文件
+.DS_Store
