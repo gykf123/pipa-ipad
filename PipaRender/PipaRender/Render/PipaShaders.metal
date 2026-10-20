@@ -9,7 +9,7 @@
 //   - 输出视频帧需上下翻转（Metal 纹理左下原点 vs 视频左上原点），由 flipMode 控制
 //
 
-#include <metal_common>
+#include <metal_stdlib>
 #include <simd/simd.h>
 #import "ShaderTypes.h"
 
@@ -159,7 +159,7 @@ fragment void shadow_fragment(MeshVertexOut in [[stage_in]]) {
 
 fragment float ssao_fragment(FullscreenVertexOut in [[stage_in]],
                              constant Uniforms &uniforms [[buffer(BufferIndexUniforms)]],
-                             constant float3 *kernel [[buffer(BufferIndexAOKernel)]],
+                             constant float3 *aoKernel [[buffer(BufferIndexAOKernel)]],
                              texture2d<float> viewposTex [[texture(0)]],
                              texture2d<float> normalTex  [[texture(1)]],
                              texture2d<float> noiseTex   [[texture(2)]],
@@ -183,7 +183,7 @@ fragment float ssao_fragment(FullscreenVertexOut in [[stage_in]],
     for (int i = 0; i < 64; ++i) {
         if (i >= samples) break;
         count++;
-        float3 sp = tbn * kernel[i] * radius + P;
+        float3 sp = tbn * aoKernel[i] * radius + P;
         float4 off = uniforms.proj * float4(sp, 1.0);
         if (off.w <= 0.0) continue;
         float3 ndc = off.xyz / off.w;
