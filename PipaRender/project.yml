@@ -59,7 +59,7 @@ targets:
           - "$(inherited)"
           - "@executable_path/Frameworks"
     entitlements:
-      file: PipaRender/PipaRender.entitlements
+      path: PipaRender/PipaRender.entitlements
       properties: {}
     info:
       path: PipaRender/Info.plist

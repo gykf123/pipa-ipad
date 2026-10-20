@@ -29,6 +29,7 @@ jobs:
 
       - name: Python 工具冒烟（打包器 / 验证器）
         run: |
+          pip install numpy pillow
           python3 tools/pack_package.py --help > /dev/null
           python3 tools/validate_package.py sample/琵琶曲.pipapkg.zip
           python3 tools/validate_package.py sample/steve_walk_spin.v2.zip
