@@ -61,12 +61,6 @@ targets:
     entitlements:
       file: PipaRender/PipaRender.entitlements
       properties: {}
-    scheme:
-      gatherCoverageData: false
-      commandLineArguments:
-        argument: ""
-      environmentVariables:
-        variable:
     info:
       path: PipaRender/Info.plist
       properties: {}

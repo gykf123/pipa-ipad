@@ -9,7 +9,7 @@ on:
 jobs:
   linux-check:
     name: Linux 语法 + 数值验证 + 工具冒烟
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
