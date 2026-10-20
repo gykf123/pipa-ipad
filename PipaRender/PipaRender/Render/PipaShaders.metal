@@ -397,7 +397,7 @@ struct TracerTemplate {
 
 struct TracerInstance {
     float3 pos;     // 世界位置（快门中心）
-    float3 half;    // 半程偏移（= vel * shutter * 0.5）
+    float3 halfVec; // 半程偏移（= vel * shutter * 0.5）
     float3 em;      // 线性自发光
 };
 
@@ -413,11 +413,11 @@ vertex TracerVertexOut tracer_vertex(TracerTemplate in [[stage_in]],
                                      uint iid [[instance_id]]) {
     TracerInstance inst = instances[iid];
     float stretch = uniforms.particleParams.z;
-    float3 p = inst.pos + inst.half * (stretch * (in.corner.y * 2.0 - 1.0));
+    float3 p = inst.pos + inst.halfVec * (stretch * (in.corner.y * 2.0 - 1.0));
     float4 clip = uniforms.proj * uniforms.view * float4(p, 1.0);
 
-    float4 ca = uniforms.proj * uniforms.view * float4(inst.pos - inst.half * stretch, 1.0);
-    float4 cb = uniforms.proj * uniforms.view * float4(inst.pos + inst.half * stretch, 1.0);
+    float4 ca = uniforms.proj * uniforms.view * float4(inst.pos - inst.halfVec * stretch, 1.0);
+    float4 cb = uniforms.proj * uniforms.view * float4(inst.pos + inst.halfVec * stretch, 1.0);
     float2 dir = cb.xy / max(abs(cb.w), 1e-6) - ca.xy / max(abs(ca.w), 1e-6);
     dir = (dot(dir, dir) < 1e-12) ? float2(1.0, 0.0) : normalize(dir);
 
