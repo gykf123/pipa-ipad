@@ -1,0 +1,72 @@
+# XcodeGen 工程定义 — PipaRender（琵琶曲 iPad 渲染器）
+# 用法：
+#   brew install xcodegen        # 一次性安装
+#   xcodegen generate            # 生成 PipaRender.xcodeproj
+#   open PipaRender.xcodeproj    # Xcode 打开，选签名团队即可真机运行
+#
+# 无第三方 SPM 依赖（ZIP 解压走系统 libz，见 Services/Unzip.swift）
+
+name: PipaRender
+options:
+  bundleIdPrefix: cn.pipa
+  deploymentTarget:
+    iOS: "15.0"
+  groupSorting: first
+  createIntermediateGroups: true
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    TARGETED_DEVICE_FAMILY: "2"            # 仅 iPad
+    SUPPORTS_MACCATALYST: false
+    PRODUCT_BUNDLE_IDENTIFIER: cn.pipa.PipaRender
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_BITCODE: false
+    SWIFT_EMIT_LOC_STRINGS: true
+    SWIFT_OBJC_BRIDING_HEADER: PipaRender/Render/ShaderTypes.h   # Swift 直接用 Uniforms / LightData / BufferIndex
+
+targets:
+  PipaRender:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: PipaRender
+    dependencies:
+      - framework: Metal.framework
+        embed: false
+      - framework: MetalKit.framework
+        embed: false
+      - framework: AVFoundation.framework
+        embed: false
+      - framework: Photos.framework
+        embed: false
+      - framework: UniformTypeIdentifiers.framework
+        embed: false
+      - sdk: libz.tbd
+    settings:
+      base:
+        INFOPLIST_FILE: PipaRender/Info.plist
+        GENERATE_INFOPLIST_FILE: false
+        CODE_SIGN_ENTITLEMENTS: PipaRender/PipaRender.entitlements
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+    entitlements:
+      file: PipaRender/PipaRender.entitlements
+      properties: {}
+    scheme:
+      gatherCoverageData: false
+      commandLineArguments:
+        argument: ""
+      environmentVariables:
+        variable:
+    info:
+      path: PipaRender/Info.plist
+      properties: {}
