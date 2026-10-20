@@ -6,7 +6,15 @@
 import Foundation
 import simd
 
-let outDir = URL(fileURLWithPath: "/tmp/swifttest")
+// 输出到当前工作目录（与 compare.py 的脚本目录一致，不依赖 /tmp）
+let outDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+do {
+    try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+} catch {
+    FileManager.default.changeCurrentDirectoryPath(FileManager.default.currentDirectoryPath)
+    print("创建输出目录失败: \(error)")
+    exit(1)
+}
 
 // ---------- 1. boneMatrix vs numpy ----------
 let nbones = 4

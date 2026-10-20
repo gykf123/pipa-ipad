@@ -2,7 +2,7 @@
 """对比 Swift 输出与 numpy 独立复刻（验证 Swift 侧公式正确性）"""
 import numpy as np, os, sys
 
-D = '/tmp/swifttest'
+D = os.path.dirname(os.path.abspath(__file__))   # 与 main.swift 的当前工作目录一致
 fails = []
 
 def check(name, ok, detail=""):
