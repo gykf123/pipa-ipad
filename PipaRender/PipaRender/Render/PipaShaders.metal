@@ -24,6 +24,11 @@ float3 srgb_to_linear(float3 c) {
     return pow(c, 2.2);
 }
 
+// float4x4 -> float3x3：MSL 无单参数截断构造（Xcode 16 metal_stdlib 严格要求），显式取左上 3×3
+inline float3x3 mat3_cast(float4x4 m) {
+    return float3x3(m[0].xyz, m[1].xyz, m[2].xyz);
+}
+
 // 全屏三角形（无顶点缓冲，vertex_id 生成）
 struct FullscreenVertexOut {
     float4 position [[position]];
@@ -72,7 +77,7 @@ vertex MeshVertexOut mesh_vertex(MeshVertexIn in [[stage_in]],
                       + in.boneW.z * bones[int(in.boneIdx.z)]
                       + in.boneW.w * bones[int(in.boneIdx.w)];
         local = skin * local;
-        nrm = float3x3(skin) * nrm;
+        nrm = mat3_cast(skin) * nrm;
     }
     // 碎块用 per-instance 模型矩阵（一次 instanced draw 画全部活碎块）
     float4x4 mdl = useInstanceModel ? instModels[iid] : model;
@@ -82,7 +87,7 @@ vertex MeshVertexOut mesh_vertex(MeshVertexIn in [[stage_in]],
     out.uv = in.uv;
     float4 view = uniforms.view * world;
     out.viewPos = view.xyz;
-    out.viewNormal = normalize(float3x3(uniforms.view) * float3x3(mdl) * nrm);
+    out.viewNormal = normalize(mat3_cast(uniforms.view) * mat3_cast(mdl) * nrm);
     out.position = uniforms.proj * view;
     return out;
 }
@@ -237,7 +242,7 @@ fragment float4 lighting_fragment(FullscreenVertexOut in [[stage_in]],
     }
 
     float3 N = normalize(normalTex.sample(smp, in.uv).xyz);      // view space
-    float3 Nw = normalize(float3x3(uniforms.invView) * N);        // world
+    float3 Nw = normalize(mat3_cast(uniforms.invView) * N);        // world
     float3 P = (uniforms.invView * float4(vp.xyz, 1.0)).xyz;
     float viewdepth = -vp.z;
 

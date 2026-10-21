@@ -12,7 +12,7 @@
 <任务名>.pipapkg.zip          （普通 ZIP，扩展名仅作标识）
 ├── package.json              唯一清单（UTF-8，见 §3）
 ├── meshes.bin                全部网格顶点数据（静态场景 + 角色部件，SoA 拼接，GL 基准）
-├── movers.bin                动态组每帧模型矩阵 [frames][16] f4（可选，GL 基准）
+├── movers.bin                动态组每帧模型矩阵（多组拼接的扁平数组，见 §4）
 ├── bones.bin                 骨骼蒙皮 track [frames][bones][10] f4（q4+t3+s3，App 现算矩阵）
 ├── camera.bin                每帧视图矩阵 [frames][16] f4（world→view，GL 基准）
 ├── camera_meta.bin           每帧 (fov_deg, near, far, 0) [frames][4] f4
@@ -93,7 +93,7 @@
         "uv":  { "offset": 127104, "count": 10592, "dtype": "f4" },   // ×2
         "idx": { "offset": 169472, "count": 7944,  "dtype": "u4" }    // 三角形列表
       },
-      "mat": { "file": "movers.bin", "offset": 0, "frames": 3730, "dtype": "f4" }
+      "mat": { "file": "movers.bin", "offset": 0, "frames": 3730, "dtype": "f4" }   // offset 单位：字节
     }
   ],
   "characters": [
@@ -151,7 +151,7 @@
 - `camera_meta.bin`：每帧 4 个 f4 = `(fov_deg, near, far, 0)`。
   桌面端语义：`fov = degrees(angle_y)`，`near = max(clip[0], 0.02)`，`far = min(max(clip[1], near+1), 600)`。
   投影矩阵由 App 生成（竖直 FOV，宽高比 = 输出宽/高）。
-- `movers.bin`：动态组每帧 16 个 f4 行主序模型矩阵（GL 基准）。
+- `movers.bin`：动态组（`animated: true`）的每帧模型矩阵，**组主序扁平大数组**——所有动态组按 `groups[]` 数组顺序首尾拼接，每组一段连续的 `[frames][16]` 行主序矩阵（GL 基准）。组 g 第 f 帧的矩阵位于 float 偏移 `g.mat.offset / 4 + f * 16`（`mat.offset` 单位是**字节**，与 `bone_buffer.offset` 的 float 单位不同，勿混）。多组场景（N 个角色/物体）即为 N 段拼接，不存在"单矩阵"限制。
 - 网格索引 `idx`：三角形列表，uint32。法线已随坐标转换。
 
 ## 5. 角色蒙皮（bones.bin = q4t3s3）
