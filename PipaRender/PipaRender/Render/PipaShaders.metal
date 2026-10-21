@@ -61,14 +61,16 @@ struct MeshVertexOut {
     float2 uv;
 };
 
+// function_constant 索引与 Swift 端 MTLFunctionConstantValues 对齐（skinned=0, useInstanceModel=1）
+constant bool skinned [[function_constant(0)]];
+constant bool useInstanceModel [[function_constant(1)]];
+
 vertex MeshVertexOut mesh_vertex(MeshVertexIn in [[stage_in]],
                                  constant Uniforms &uniforms [[buffer(BufferIndexUniforms)]],
                                  constant float4x4 *bones [[buffer(BufferIndexBones)]],
                                  constant float4x4 *instModels [[buffer(BufferIndexDebrisModel)]],
                                  constant float4x4 &model [[buffer(BufferIndexModel)]],
-                                 uint iid [[instance_id]],
-                                 bool skinned [[function_constant]],
-                                 bool useInstanceModel [[function_constant]]) {
+                                 uint iid [[instance_id]]) {
     float4 local = float4(in.position, 1.0);
     float3 nrm = in.normal;
     if (skinned) {

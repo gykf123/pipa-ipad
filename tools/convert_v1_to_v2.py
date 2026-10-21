@@ -42,6 +42,25 @@ SUN = {"dir": [0.37, 0.83, 0.42], "color": [1.0, 0.96, 0.9], "intensity": 3.4,
        "shadow_softness": 1.8, "shadow_samples": 16}
 
 
+SEM = {'pos': ['px', 'py', 'pz'], 'nrm': ['nx', 'ny', 'nz'], 'uv': ['u', 'v']}
+
+
+def expand_attrs(attrs):
+    """v1 attributes 展开成每 float 一列的语义名，兼容两种导出写法：
+    - 标量列表：['px','py','pz','nx','ny','nz','u','v']（每项 1 分量）
+    - 复合列表：['pos3','nrm3','uv2']（末尾数字 = 分量数）
+    """
+    cols = []
+    for a in attrs:
+        if a and a[-1].isdigit():
+            base, n = a[:-1], int(a[-1])
+            names = SEM.get(base)
+            cols += names[:n] if names and len(names) >= n else [f"{base}{i}" for i in range(n)]
+        else:
+            cols.append(a)
+    return cols
+
+
 def convert(src, dst, skin=None, resolution=(1920, 1080), keep_hat=True):
     zin = zipfile.ZipFile(src)
     pkg = json.loads(zin.read('package.json').decode('utf-8'))
@@ -55,14 +74,28 @@ def convert(src, dst, skin=None, resolution=(1920, 1080), keep_hat=True):
     attrs = m['attributes']
     ngroups = len(m['groups'])
 
+    # 贴图：--skin 优先；否则包内第一个 texture 直通（atlas UV 不变，直接引用原文件）
+    if skin is None:
+        texs = pkg.get('textures') or []
+        if texs:
+            t0 = texs[0]
+            skin = t0.get('file') if isinstance(t0, dict) else t0
+            if skin not in zin.namelist():
+                print(f"[warn] texture {skin} 不在包内，忽略"); skin = None
+
     # ---------- meshes.bin: 8 标量数组 -> pos/nrm/uv 每顶点分量连续 ----------
+    cols = expand_attrs(attrs)
     raw = np.frombuffer(zin.read(m['file']), dtype='<f4')
-    assert raw.size == vc * len(attrs), f"meshes.bin 大小不符: {raw.size} != {vc*len(attrs)}"
-    A = {a: raw[i*vc:(i+1)*vc] for i, a in enumerate(attrs)}
+    assert raw.size == vc * len(cols), f"meshes.bin 大小不符: {raw.size} != {vc*len(cols)}"
+    A = {c: raw[i*vc:(i+1)*vc] for i, c in enumerate(cols)}
 
     new_mesh = bytearray()
     groups_out = []
-    idx_all = np.frombuffer(zin.read(pkg['indices']['file']), dtype='<u4')
+    idt = str(pkg['indices'].get('dtype', 'uint32')).lower()
+    idx_dt = '<u2' if idt in ('uint16', 'u2') else '<u4'
+    idx_all = np.frombuffer(zin.read(pkg['indices']['file']), dtype=idx_dt)
+    assert idx_all.size == pkg['indices']['count'], \
+        f"indices 数量不符: {idx_all.size} != {pkg['indices']['count']}"
 
     # movers: [frames][groups][16] -> 组主序 [groups][frames][16]
     mv = np.frombuffer(zin.read(pkg['movers']['file']), dtype='<f4').reshape(frames, ngroups, 16)
