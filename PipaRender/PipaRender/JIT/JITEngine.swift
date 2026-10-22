@@ -65,10 +65,15 @@ public enum JITEngine {
         #endif
         guard let p = raw, p != MAP_FAILED else { throw JITError.mmapFailed(errno: errno) }
         #if canImport(Darwin)
-        // 带 com.apple.security.cs.allow-jit 的进程：MAP_JIT 页可直接写。
-        // pthread_jit_write_protect 未导出到 Swift（macOS 10.14+、iOS 不可用），
-        // 且仅非 JIT app 才需要它做 W^X 切换；JIT app 由 entitlement 放行。
+        // 带 com.apple.security.cs.allow-jit 的进程：MAP_JIT 页默认可映射但初始无 PROT_EXEC，
+        // 直接跳转会 SIGBUS。写入后 mprotect 到 RX（W^X：先写后切执行）。
+        // pthread_jit_write_protect 未导出到 Swift，不依赖它。
         memcpy(p, code, code.count)
+        if mprotect(p, size, PROT_READ | PROT_EXEC) != 0 {
+            let e = errno
+            munmap(p, size)
+            throw JITError.mmapFailed(errno: e)
+        }
         #else
         memcpy(p, code, code.count)
         #endif

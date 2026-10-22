@@ -32,6 +32,7 @@ let aw = simd_float4x4(rowMajor: armFloats)
 guard let page = try? JITEngine.makeExecutable([UInt8](code)) else {
     print("FAIL makeExecutable"); exit(2)
 }
+print("page=\(page.address) code=\(code.count)B track=\(track.count)B arm=\(arm.count)B")
 
 var maxErr: Float = 0
 var failed = false
