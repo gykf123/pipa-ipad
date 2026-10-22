@@ -83,7 +83,17 @@ extension simd_float4x4 {
 // MARK: - 骨骼
 
 extension simd_quatf {
-    init(track: [Float]) { self.init(vector: simd_float4(track[0], track[1], track[2], track[3])) }
+    init(track: [Float]) {
+        let v = simd_float4(track[0], track[1], track[2], track[3])
+        let n2 = v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w
+        // 双平台一致性（CI 真执行对比暴露）：Apple 的 simd_float4x4(quatf) 假设单位
+        // 四元数、不归一化；Linux shim 按 2/|q|² 自动归一化。包内 q 非单位时两平台
+        // 参考值非对角元恰好差 2 倍，且 Apple simd_slerp 对非单位输入 dot>1 会 acos NaN。
+        // 统一在入口归一化（与 JIT 内核的 1e-20 守卫同语义）：单位输入时是恒等操作，
+        // 非单位输入时 CPU 回退路径与 JIT 路径从此一致。
+        let n = n2 > 1e-20 ? n2.squareRoot() : 1
+        self.init(vector: simd_float4(v.x / n, v.y / n, v.z / n, v.w / n))
+    }
 }
 
 /// q4t3s3 -> 蒙皮矩阵。
