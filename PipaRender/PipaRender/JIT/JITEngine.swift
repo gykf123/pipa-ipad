@@ -11,6 +11,9 @@
 //
 
 import Foundation
+#if canImport(Darwin)
+import Darwin          // mmap/MAP_JIT/pthread_jit_write_protect 需显式导入（Foundation 不保证再导出）
+#endif
 
 public enum JITError: Error, Equatable {
     case mmapFailed(errno: Int32)
