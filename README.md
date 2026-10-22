@@ -16,6 +16,9 @@ pipa-ipad/
 │   ├── pack_package.py       打包器（纯 Python + numpy，见文件头用法）
 │   ├── convert_v1_to_v2.py   v1 -> v2 转换器（外部工具按 v1 设计导出时用）
 │   ├── validate_package.py   包验证器（导入前自检：FAIL/WARN 分级报告）
+│   ├── golden_check/         JIT 编码 golden-bytes 比对（clang 交叉汇编逐字节 diff）
+│   ├── jit_encode_check/     JIT 编码结构断言（指令族统计 / 循环闭环 / literal）
+│   ├── jit_exec_check/       JIT 内核真执行验证（macOS arm64 + allow-jit 签名）
 │   └── swift_logic_check/    Linux 数值验证套件（simd 兼容层 + numpy 对比）
 └── PipaRender/               iPad App 源码（XcodeGen 工程，**不编译交付**）
     ├── project.yml           xcodegen generate -> PipaRender.xcodeproj
@@ -24,6 +27,7 @@ pipa-ipad/
         ├── Model/            包格式 Codable 模型 + 包仓库
         ├── Services/         零依赖 ZIP 解压（系统 libz）
         ├── Render/           Metal 渲染管线（见下）
+        ├── JIT/              骨骼蒙皮 JIT（软件汇编 + 探测降级，见下）
         └── Views/            SwiftUI 界面
 ```
 
@@ -78,6 +82,38 @@ CSM 阴影 ×3（splits 0.18/0.45×distance，Metal 深度 [0,1]）
 坐标全部 **GL 基准 Y-up**（打包器烤入）；Metal NDC 深度 [0,1] 由矩阵约定处理；
 骨骼 `M = BASIS @ (armature_world @ (diag(s)@R(q)+t)) @ BASIS_INV`（App 现算，误差 1e-7）。
 
+## 骨骼蒙皮 JIT
+
+骨骼蒙皮是每顶点每帧的热点循环。App 内置一个**纯软件 ARM64 汇编器**（`JIT/JITAssembler.swift`，
+无任何依赖），运行时生成蒙皮内核机器码：
+
+```
+每顶点：4 骨矩阵查表 -> 权重混合 4x4 -> 法线变换（去掉平移行）
+```
+
+**三级探测降级**（`JIT/JITAvailability.swift`，零自动崩溃风险）：
+
+| 级 | 条件 | 行为 |
+|---|---|---|
+| 1 | `mmap(MAP_JIT)` 成功 + 探针（`mov w0,#42; ret`）返回 42 | 走 JIT 内核 |
+| 2 | MAP_JIT 失败（普通签名安装 / 无调试器） | 全程 Swift 参考实现（逐顶点解释） |
+| 3 | 用户在设置里手动关闭 / 上次探针崩溃 | 持久化标记，不再自动尝试 |
+
+> iOS 只对持有 `com.apple.security.cs.allow-jit` entitlement 的 App 开放 JIT（普通分发/免费签名
+> 不具备），因此**设备上默认走 Swift 参考实现**；JIT 内核的正确性在 CI 的 macOS 真执行步骤中验证
+> （自签名 + allow-jit，`tools/jit_exec_check/` 生成骨骼输入、执行内核、numpy 对比数值）。
+
+**编码可信度三级验证**（CI 全绿才算数）：
+
+1. `jit_encode_check` — 结构断言：指令族统计（CSEL/FADD/FSUB/FMLA 掩码点数）、循环闭环、literal 布局
+2. `golden_check` — 手写语义等价 `.s` → clang 交叉汇编 → 解析 ELF64 取 `.text` → 与汇编器输出**逐字节 diff**
+   （当前 680 bytes / 170 条指令完全一致）
+3. `jit_exec_check` — macOS arm64 上真执行内核，与 numpy 参考实现对比每个浮点分量
+
+编码器踩过的坑（都有对应断言兜底）：A64 通用寄存器无 SMAX/SMIN（只能 `cmp + csel`）；
+CSEL 的 opc 位必须是 `00`（`01/10/11` 分别是 CSINC/CSINV/CSNEG）；
+VFP imm8 映射反常（`fmov #1.0` 的 imm8 是 `0x70` 而非直觉值）。
+
 ## 打包新任务
 
 ```bash
@@ -107,3 +143,4 @@ MC Steve 样例即由 `steve_walk_spin` v1 包转换而来（`sample/` 内有转
 - 碎块（debris）解析弹道，最多 3 事件 × 30 块同时存活
 - iOS 15+；质量分档 + 热控降档针对 A10 设计，30% 占用档为过热保险档
 - 逻辑层数值已用 numpy 独立复刻交叉验证（见 `tools/swift_logic_check/`）
+- 蒙皮 JIT 需要 allow-jit entitlement，普通签名安装的设备上自动走 Swift 参考实现（功能等价，慢一档）

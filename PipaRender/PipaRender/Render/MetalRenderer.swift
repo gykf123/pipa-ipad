@@ -75,7 +75,7 @@ final class MetalRenderer {
                                          options: .storageModeShared)
         var ldata: [LightData] = []
         for l in p.lights.prefix(Int(MAX_LIGHTS)) {
-            let isArea = (l.type == "AREA") ? 1.0 : 0.0
+            let isArea: Float = (l.type == "AREA") ? 1 : 0
             let nrm = l.normal ?? [0, 0, 0]
             ldata.append(LightData(pos: simd_float4(l.pos[0], l.pos[1], l.pos[2], 0),
                                    col: simd_float4(l.color[0], l.color[1], l.color[2], 1),
@@ -107,8 +107,8 @@ final class MetalRenderer {
         }
 
         uniformBuffer = device.makeBuffer(length: MemoryLayout<Uniforms>.stride, options: .storageModeShared)!
-        // CVMetalTextureCacheCreate(allocator, attributes, metalDevice, out)：第 3 参是非可选 MTLDevice
-        CVMetalTextureCacheCreate(nil, nil, device, &textureCache)
+        // CVMetalTextureCacheCreate(allocator, cacheAttributes, metalDevice, textureAttributes, out)
+        CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
         rebuildTargetsIfNeeded()
     }
 
