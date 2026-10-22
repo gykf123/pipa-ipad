@@ -64,6 +64,10 @@ public struct simd_float4x4 {
         c2 = simd_float4(rows.0.z, rows.1.z, rows.2.z, rows.3.z)
         c3 = simd_float4(rows.0.w, rows.1.w, rows.2.w, rows.3.w)
     }
+    // Apple simd 的 rows: 接受数组（Linux shim 补同一签名，源码双平台通用）
+    public init(rows: [simd_float4]) {
+        self.init(rows: (rows[0], rows[1], rows[2], rows[3]))
+    }
     public init(translation t: simd_float3) {
         self.init(rows: (simd_float4(1, 0, 0, t.x), simd_float4(0, 1, 0, t.y),
                          simd_float4(0, 0, 1, t.z), simd_float4(0, 0, 0, 1)))

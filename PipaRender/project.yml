@@ -54,6 +54,7 @@ targets:
       base:
         INFOPLIST_FILE: PipaRender/Info.plist
         GENERATE_INFOPLIST_FILE: false
+        SWIFT_OBJC_BRIDGING_HEADER: PipaRender/Render/ShaderTypes.h   # Swift 直接用 Uniforms / LightData / BufferIndex
         CODE_SIGN_ENTITLEMENTS: PipaRender/PipaRender.entitlements
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"

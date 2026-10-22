@@ -104,7 +104,7 @@ struct DocumentPicker: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ vc: UIDocumentPickerViewController, context: Context) {}
     func makeCoordinator() -> Coordinator { Coordinator(self) }
-    class Coordinator: NSObject, UIDocumentPickerViewControllerDelegate {
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
         let parent: DocumentPicker
         init(_ p: DocumentPicker) { parent = p }
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {

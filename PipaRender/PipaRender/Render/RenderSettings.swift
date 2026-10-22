@@ -46,7 +46,7 @@ struct QualityProfile {
 }
 
 /// 一个渲染任务的完整设置
-struct RenderSettings {
+struct RenderSettings: Codable {
     var outputFPS: Int = 30              // 成品帧率（24/30/60）
     var occupancy: Float = 0.7           // 渲染最大占用 0.3–1.0
     var sourceStart: Int = 0             // 源帧范围（0 基，相对 frame_start，含）

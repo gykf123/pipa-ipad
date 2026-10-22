@@ -7,12 +7,12 @@ import Foundation
 import simd
 
 // Blender(z-up) -> GL(y-up) 基准变换（与桌面端一致）
-let BASIS: simd_float4x4 = simd_float4x4(rows: (
+let BASIS: simd_float4x4 = simd_float4x4(rows: [
     simd_float4(1, 0, 0, 0),
     simd_float4(0, 0, 1, 0),
     simd_float4(0, -1, 0, 0),
     simd_float4(0, 0, 0, 1)
-))
+])
 
 let BASIS_INV: simd_float4x4 = BASIS.inverse
 
