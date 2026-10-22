@@ -16,6 +16,10 @@
 //    x6 = const float* armatureWorld 16 floats 行主序
 //    x7 = float* out                boneCount × 16 floats 行主序
 //
+//  ⚠ x5 有意跳过（寄存器分配留白）：调用方 @convention(c) 的 INT 参数序列必须显式
+//  插一个占位 Int32，否则 armatureWorld 落 x5 / out 落 x6 → 内核读错地址（SIGBUS）。
+//  参考 JITSkinning.swift 与 tools/jit_exec_check/main.swift 的写法。
+//
 
 import Foundation
 

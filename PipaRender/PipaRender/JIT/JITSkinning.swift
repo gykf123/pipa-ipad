@@ -24,12 +24,16 @@ enum SkinKernel {
             let trackPtr = track.withUnsafeBytes { $0.bindMemory(to: Float.self).baseAddress! }
             var aw = armatureWorld
             page.call { ptr in
+                // 内核 ABI 跳过 x5（见 JITKernels 头注）：INT 参数序列必须显式占位一个
+                // Int32，否则 armatureWorld 落 x5 / dst 落 x6，内核读 x6/x7 即总线错误。
                 typealias Fn = @convention(c) (
                     UnsafeRawPointer, Int32, Int32, Int32, Int32, Float,
+                    Int32,
                     UnsafeRawPointer, UnsafeRawPointer) -> Void
                 let fn = unsafeBitCast(ptr, to: Fn.self)
                 fn(trackPtr, Int32(charOffsetFloats), Int32(frames), Int32(boneCount),
                    Int32(frameStart), frame,
+                   0,
                    withUnsafePointer(to: &aw) { UnsafeRawPointer($0) }, dst)
             }
             return

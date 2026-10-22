@@ -42,11 +42,15 @@ for fi in 0..<frames {
         guard let outPtr = outBuf.baseAddress else { return false }
         var awCopy = aw
         page.call { ptr in
+            // 内核 ABI 跳过 x5（见 JITKernels 头注）：INT 参数序列必须显式占位一个
+            // Int32，否则 armatureWorld 落 x5 / out 落 x6，内核读 x6/x7 即总线错误。
             typealias Fn = @convention(c) (
                 UnsafeRawPointer, Int32, Int32, Int32, Int32, Float,
+                Int32,
                 UnsafeRawPointer, UnsafeMutablePointer<Float>) -> Void
             let fn = unsafeBitCast(ptr, to: Fn.self)
             fn(trackPtr, 0, Int32(frames), Int32(nbones), 0, Float(fi),
+               0,
                withUnsafePointer(to: &awCopy) { UnsafeRawPointer($0) }, outPtr)
         }
         return true
