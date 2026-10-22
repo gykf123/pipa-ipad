@@ -11,6 +11,7 @@ pipa-ipad/
 ├── sample/
 │   ├── 琵琶曲.pipapkg.zip    样例包（57 组 / 2 角色 / 113676 粒子 / 3730 帧 / BGM）
 │   ├── steve_walk_spin.v2.zip MC Steve 样例（7 部件 / 300 帧 / 30fps，v1 转换而来）
+│   ├── creeper_flower_scene5.v2.zip  苦力怕花园样例（22 组 / 120 帧，v2 变体转换而来）
 │   └── steve_softrender.png  Steve 样例的软渲染抽查图（3 帧）
 ├── tools/
 │   ├── pack_package.py       打包器（纯 Python + numpy，见文件头用法）
@@ -130,11 +131,23 @@ python3 tools/validate_package.py <包.zip> -v
 
 # 外部工具按 v1 设计导出（meshes/indices 顶层段、8 标量数组）时，先转 v2：
 python3 tools/convert_v1_to_v2.py <v1包.zip> -o <v2包.zip> --skin skins/char1.png
+
+# 部分导出工具直接产 v2 变体（meshes.groups + index_base: group_local）也走同一转换器：
+python3 tools/convert_v1_to_v2.py <v2变体.zip> -o <v2包.zip> --uv-clamp
 ```
 
 v1 -> v2 自动处理：标量数组交错为每顶点分量连续 / indices 合并入 meshes.bin 并转组内局部索引 /
 movers 重排为组主序 / bones 丢弃（movers 已含全部动画）/ 补 defaults+sun 等必选字段。
-MC Steve 样例即由 `steve_walk_spin` v1 包转换而来（`sample/` 内有转换结果与软渲染抽查图）。
+索引基准按源包 `indices.index_base` 分流：缺省为全局索引（减 vertex_offset），
+显式 `group_local` 时原样透传；`--uv-clamp` 把越界 UV 夹到 [0,1]（sampler 为 repeat）。
+MC Steve 样例即由 `steve_walk_spin` v1 包转换而来；苦力怕花园样例由 v2 变体转换而来
+（`sample/` 内有转换结果与软渲染抽查图）。
+
+> v2 变体的已知局限：该变体的部件顶点为「关节锚定的归一化盒子」，包内只有 `pivot`
+> 而无部件尺寸/锚点语义（同名为「腿」的部件 local 范围都不一致），转换器无法唯一
+> 恢复装配，角色部件会按 pivot 平移后叠合（见 `sample/creeper_softrender.png` 的
+> 竖直柱效果）；花（stem/petal）不受影响。需要正确体型时请用带完整尺寸信息的
+> v1 包或 pack_package.py 重新打包。
 
 ## 已知限制
 

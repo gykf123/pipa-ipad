@@ -69,9 +69,9 @@ public enum JITEngine {
         memcpy(p, code, code.count)
         #if os(macOS)
         pthread_jit_write_protect(1)          // 回执行（Apple 核 I-cache 自动一致）
-        #else
-        sys_icache_invalidate(p, size)        // iOS：写入后显式失效 I-cache
         #endif
+        // iOS：MAP_JIT 页语义自带 I-cache 一致性（写入对指令可见），无需显式失效；
+        // sys_icache_invalidate 不在 Swift iOS SDK 导出面，强声明反而有符号风险
         #else
         memcpy(p, code, code.count)
         #endif
