@@ -45,7 +45,7 @@ public func cross(_ a: simd_float3, _ b: simd_float3) -> simd_float3 {
 public func length(_ v: simd_float3) -> Float { (v.x * v.x + v.y * v.y + v.z * v.z).squareRoot() }
 public func normalize(_ v: simd_float3) -> simd_float3 { v / Swift.max(length(v), 1e-20) }
 public func simd_normalize(_ v: simd_float3) -> simd_float3 { normalize(v) }
-public func mix(_ a: simd_float3, _ b: simd_float3, _ t: simd_float3) -> simd_float3 {
+public func mix(_ a: simd_float3, _ b: simd_float3, t: simd_float3) -> simd_float3 {
     simd_float3(a.x + (b.x - a.x) * t.x, a.y + (b.y - a.y) * t.y, a.z + (b.z - a.z) * t.z)
 }
 
@@ -58,23 +58,15 @@ public struct simd_float4x4 {
         c0 = simd_float4(1, 0, 0, 0); c1 = simd_float4(0, 1, 0, 0)
         c2 = simd_float4(0, 0, 1, 0); c3 = simd_float4(0, 0, 0, 1)
     }
-    public init(rows: (simd_float4, simd_float4, simd_float4, simd_float4)) {
-        c0 = simd_float4(rows.0.x, rows.1.x, rows.2.x, rows.3.x)
-        c1 = simd_float4(rows.0.y, rows.1.y, rows.2.y, rows.3.y)
-        c2 = simd_float4(rows.0.z, rows.1.z, rows.2.z, rows.3.z)
-        c3 = simd_float4(rows.0.w, rows.1.w, rows.2.w, rows.3.w)
-    }
-    // Apple simd 的 rows: 接受数组（Linux shim 补同一签名，源码双平台通用）
+    // Apple simd 的 rows: 接受数组（Linux shim 补同一签名，源码双平台通用）。
+    // 注意：Apple 没有 rows: 元组形式——RenderMath.swift 已统一用数组，shim 不补元组版，
+    // 防止"Linux 能过、macOS 挂"的 API 分叉（mix 的 t: 标签同理）。
     public init(rows: [simd_float4]) {
-        self.init(rows: (rows[0], rows[1], rows[2], rows[3]))
-    }
-    public init(translation t: simd_float3) {
-        self.init(rows: (simd_float4(1, 0, 0, t.x), simd_float4(0, 1, 0, t.y),
-                         simd_float4(0, 0, 1, t.z), simd_float4(0, 0, 0, 1)))
-    }
-    public init(scale s: simd_float3) {
-        self.init(rows: (simd_float4(s.x, 0, 0, 0), simd_float4(0, s.y, 0, 0),
-                         simd_float4(0, 0, s.z, 0), simd_float4(0, 0, 0, 1)))
+        // 行主序入参 -> 列主序存储（与 Apple simd 语义一致）
+        c0 = simd_float4(rows[0].x, rows[1].x, rows[2].x, rows[3].x)
+        c1 = simd_float4(rows[0].y, rows[1].y, rows[2].y, rows[3].y)
+        c2 = simd_float4(rows[0].z, rows[1].z, rows[2].z, rows[3].z)
+        c3 = simd_float4(rows[0].w, rows[1].w, rows[2].w, rows[3].w)
     }
     public init(_ q: simd_quatf) {
         let (x, y, z, w) = (q.vector.x, q.vector.y, q.vector.z, q.vector.w)
@@ -83,12 +75,12 @@ public struct simd_float4x4 {
         let (xx, yy, zz) = (x * x, y * y, z * z)
         let (xy, xz, yz) = (x * y, x * z, y * z)
         let (wx, wy, wz) = (w * x, w * y, w * z)
-        self.init(rows: (
+        self.init(rows: [
             simd_float4(1 - s * (yy + zz), s * (xy - wz), s * (xz + wy), 0),
             simd_float4(s * (xy + wz), 1 - s * (xx + zz), s * (yz - wx), 0),
             simd_float4(s * (xz - wy), s * (yz + wx), 1 - s * (xx + yy), 0),
             simd_float4(0, 0, 0, 1)
-        ))
+        ])
     }
 
     public subscript(column: Int) -> simd_float4 {

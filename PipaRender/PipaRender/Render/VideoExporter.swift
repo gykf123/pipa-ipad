@@ -72,7 +72,7 @@ final class SegmentWriter {
             usleep(2000)
             tries += 1
         }
-        let pts = CMTime(value: CMTimeValue(frameCount), timescale: renderer.settings.outputFPS)
+        let pts = CMTime(value: CMTimeValue(frameCount), timescale: CMTimeScale(renderer.settings.outputFPS))
         guard adaptor.append(pbOut!, withPresentationTime: pts) else {
             throw PackageError.metalFailure("追加帧失败：\(writer.error?.localizedDescription ?? "")")
         }
@@ -95,7 +95,7 @@ enum VideoComposer {
     /// 合并分段 mp4；audioURL 非空时混入音频（静音补齐到视频时长）
     static func compose(segmentURLs: [URL], output: URL, audioURL: URL?, fps: Int) throws -> URL {
         let comp = AVMutableComposition()
-        guard let vtrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackIDInvalid) else {
+        guard let vtrack = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
             throw PackageError.corruptData("无法创建视频轨")
         }
         var cursor = CMTime.zero
@@ -114,7 +114,7 @@ enum VideoComposer {
             let aAsset = AVURLAsset(url: audioURL)
             let aDur = aAsset.duration
             if let at = aAsset.tracks(withMediaType: .audio).first,
-               let atrack = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackIDInvalid) {
+               let atrack = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
                 let useDur = CMTimeMinimum(aDur, totalDuration)
                 try atrack.insertTimeRange(CMTimeRange(start: .zero, duration: useDur), of: at, at: .zero)
             }

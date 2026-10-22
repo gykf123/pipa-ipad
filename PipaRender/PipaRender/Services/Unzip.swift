@@ -12,6 +12,7 @@ enum UnzipError: LocalizedError {
     case unsupportedMethod(UInt16)
     case inflateFailed(Int32)
     case entryNotFound(String)
+    case corruptData(String)
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,7 @@ enum UnzipError: LocalizedError {
         case .unsupportedMethod(let m): return "不支持的压缩方法 \(m)（仅支持 stored/deflate）"
         case .inflateFailed(let c): return "解压失败（zlib \(c)）"
         case .entryNotFound(let n): return "ZIP 内没有条目：\(n)"
+        case .corruptData(let m): return "ZIP 数据损坏：\(m)"
         }
     }
 }

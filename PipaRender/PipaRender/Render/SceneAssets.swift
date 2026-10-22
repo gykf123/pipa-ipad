@@ -140,34 +140,44 @@ final class SceneAssets {
     // MARK: 顶点布局
 
     private func buildVertexDescriptors() throws {
-        vertexDescriptor.attributes[VertexAttributePosition.rawValue] = MTLVertexAttributeDescriptor(
-            bufferIndex: BufferIndexMeshPosition.rawValue, offset: 0, format: .float3)
-        vertexDescriptor.attributes[VertexAttributeNormal.rawValue] = MTLVertexAttributeDescriptor(
-            bufferIndex: BufferIndexMeshNormal.rawValue, offset: 0, format: .float3)
-        vertexDescriptor.attributes[VertexAttributeUV.rawValue] = MTLVertexAttributeDescriptor(
-            bufferIndex: BufferIndexMeshUV.rawValue, offset: 0, format: .float2)
-        vertexDescriptor.attributes[VertexAttributeBoneIndex.rawValue] = MTLVertexAttributeDescriptor(
-            bufferIndex: BufferIndexMeshBoneIndex.rawValue, offset: 0, format: .float4)
-        vertexDescriptor.attributes[VertexAttributeBoneWeight.rawValue] = MTLVertexAttributeDescriptor(
-            bufferIndex: BufferIndexMeshBoneWeight.rawValue, offset: 0, format: .float4)
-        vertexDescriptor.layouts[BufferIndexMeshPosition.rawValue] = MTLVertexBufferLayoutDescriptor(stride: 12)
-        vertexDescriptor.layouts[BufferIndexMeshNormal.rawValue] = MTLVertexBufferLayoutDescriptor(stride: 12)
-        vertexDescriptor.layouts[BufferIndexMeshUV.rawValue] = MTLVertexBufferLayoutDescriptor(stride: 8)
-        vertexDescriptor.layouts[BufferIndexMeshBoneIndex.rawValue] = MTLVertexBufferLayoutDescriptor(stride: 16)
-        vertexDescriptor.layouts[BufferIndexMeshBoneWeight.rawValue] = MTLVertexBufferLayoutDescriptor(stride: 16)
+        // 注意（Xcode 16 编译暴露）：
+        // 1. MTLVertexAttributeDescriptor / MTLVertexBufferLayoutDescriptor 只有无参 init()，
+        //    没有 (bufferIndex:offset:format:) 成员式构造——属性逐项赋值；
+        // 2. ShaderTypes.h 的 C 枚举 rawValue 是 UInt32，attributes/layouts 下标要 Int。
+        func setAttr(_ slot: UInt32, buffer: UInt32, format: MTLVertexFormat, offset: Int = 0) {
+            let d = MTLVertexAttributeDescriptor()
+            d.format = format
+            d.offset = offset
+            d.bufferIndex = Int(buffer)
+            vertexDescriptor.attributes[Int(slot)] = d
+        }
+        func setLayout(_ buffer: UInt32, stride: Int) {
+            let l = MTLVertexBufferLayoutDescriptor()
+            l.stride = stride
+            vertexDescriptor.layouts[Int(buffer)] = l
+        }
+        setAttr(VertexAttributePosition.rawValue, buffer: BufferIndexMeshPosition.rawValue, format: .float3)
+        setAttr(VertexAttributeNormal.rawValue, buffer: BufferIndexMeshNormal.rawValue, format: .float3)
+        setAttr(VertexAttributeUV.rawValue, buffer: BufferIndexMeshUV.rawValue, format: .float2)
+        setAttr(VertexAttributeBoneIndex.rawValue, buffer: BufferIndexMeshBoneIndex.rawValue, format: .float4)
+        setAttr(VertexAttributeBoneWeight.rawValue, buffer: BufferIndexMeshBoneWeight.rawValue, format: .float4)
+        setLayout(BufferIndexMeshPosition.rawValue, stride: 12)
+        setLayout(BufferIndexMeshNormal.rawValue, stride: 12)
+        setLayout(BufferIndexMeshUV.rawValue, stride: 8)
+        setLayout(BufferIndexMeshBoneIndex.rawValue, stride: 16)
+        setLayout(BufferIndexMeshBoneWeight.rawValue, stride: 16)
 
         // 非蒙皮（静态组 / 碎块）：只绑 pos/nrm/uv，避免 Metal 验证缺失 bone buffer
         for attr in [VertexAttributePosition.rawValue, VertexAttributeNormal.rawValue, VertexAttributeUV.rawValue] {
-            plainVertexDescriptor.attributes[attr] = vertexDescriptor.attributes[attr]
+            plainVertexDescriptor.attributes[Int(attr)] = vertexDescriptor.attributes[Int(attr)]
         }
         for l in [BufferIndexMeshPosition.rawValue, BufferIndexMeshNormal.rawValue, BufferIndexMeshUV.rawValue] {
-            plainVertexDescriptor.layouts[l] = vertexDescriptor.layouts[l]
+            plainVertexDescriptor.layouts[Int(l)] = vertexDescriptor.layouts[Int(l)]
         }
 
         // 粒子：slot0 = 模板 corner（perVertex）；实例数据走 buffer(5) 直读（不进 vertex descriptor）
-        particleDescriptor.attributes[VertexAttributeCorner.rawValue] = MTLVertexAttributeDescriptor(
-            bufferIndex: 0, offset: 0, format: .float2)
-        particleDescriptor.layouts[0] = MTLVertexBufferLayoutDescriptor(stride: 8)
+        setAttr(VertexAttributeCorner.rawValue, buffer: 0, format: .float2)
+        setLayout(0, stride: 8)
     }
 
     // MARK: 网格
@@ -344,8 +354,9 @@ final class SceneAssets {
         // function_constant 索引 = metal 中声明顺序（skinned=0, useInstanceModel=1）
         func constants(skinned: Bool, instanced: Bool) -> MTLFunctionConstantValues {
             let c = MTLFunctionConstantValues()
-            c.setConstantValue(&skinned, type: .bool, index: 0)
-            c.setConstantValue(&instanced, type: .bool, index: 1)
+            var s = skinned, i = instanced        // setConstantValue 要 inout，形参是 let
+            c.setConstantValue(&s, type: .bool, index: 0)
+            c.setConstantValue(&i, type: .bool, index: 1)
             return c
         }
 
@@ -400,15 +411,16 @@ final class SceneAssets {
             d.vertexDescriptor = particleDescriptor
             d.vertexFunction = try fn(vertex)
             d.fragmentFunction = try fn(fragment)
-            let ca = d.colorAttachments[0]
-            ca.pixelFormat = .rgba16Float
-            ca.isBlendingEnabled = true
-            ca.rgbBlendOperation = .add
-            ca.sourceRGBBlendFactor = .one
-            ca.destinationRGBBlendFactor = .one
-            ca.alphaBlendOperation = .add
-            ca.sourceAlphaBlendFactor = .one
-            ca.destinationAlphaBlendFactor = .one
+            // colorAttachments 下标返回 IUO：直接成员赋值可隐式解包；
+            // 先 let 绑定会丢掉 IUO 性（变成 T?），成员访问必须显式解包——故用直接赋值。
+            d.colorAttachments[0].pixelFormat = .rgba16Float
+            d.colorAttachments[0].isBlendingEnabled = true
+            d.colorAttachments[0].rgbBlendOperation = .add
+            d.colorAttachments[0].sourceRGBBlendFactor = .one
+            d.colorAttachments[0].destinationRGBBlendFactor = .one
+            d.colorAttachments[0].alphaBlendOperation = .add
+            d.colorAttachments[0].sourceAlphaBlendFactor = .one
+            d.colorAttachments[0].destinationAlphaBlendFactor = .one
             d.depthAttachmentPixelFormat = .invalid
             d.stencilAttachmentPixelFormat = .invalid
             return try device.makeRenderPipelineState(descriptor: d)
@@ -477,7 +489,7 @@ final class SceneAssets {
                 pos.y += 0.5 * g * t * t
                 pos.y = max(pos.y, ev.floor)
                 var m = simd_float4x4(translation: pos) * simd_float4x4(simd_quatf(angle: ang * t, axis: axis))
-                m = m * simd_float4x4(scale: size * fade)
+                m = m * simd_float4x4(scale: simd_float3(repeating: size * fade))
                 withUnsafePointer(to: &m) { mp in
                     memcpy(UnsafeMutableRawPointer(mptr.advanced(by: count * 16)), mp, 64)
                 }

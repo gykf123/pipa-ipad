@@ -19,35 +19,50 @@ let BASIS_INV: simd_float4x4 = BASIS.inverse
 extension simd_float4x4 {
     /// 由 numpy 行主序 16 floats 构造（乘法语义一致：行向量右乘）
     init(rowMajor a: [Float]) {
-        self.init(rows: (
+        self.init(rows: [
             simd_float4(a[0], a[1], a[2], a[3]),
             simd_float4(a[4], a[5], a[6], a[7]),
             simd_float4(a[8], a[9], a[10], a[11]),
             simd_float4(a[12], a[13], a[14], a[15])
-        ))
+        ])
+    }
+
+    /// Apple simd 无 translation/scale 构造器（只有 rows:/columns:/diagonal:/quatf），
+    /// 这里自建——Linux shim 同步提供同签名（simd_shim.swift），保证双平台一致。
+    init(translation t: simd_float3) {
+        self.init(rows: [
+            simd_float4(1, 0, 0, t.x), simd_float4(0, 1, 0, t.y),
+            simd_float4(0, 0, 1, t.z), simd_float4(0, 0, 0, 1)
+        ])
+    }
+    init(scale s: simd_float3) {
+        self.init(rows: [
+            simd_float4(s.x, 0, 0, 0), simd_float4(0, s.y, 0, 0),
+            simd_float4(0, 0, s.z, 0), simd_float4(0, 0, 0, 1)
+        ])
     }
 
     /// Metal 深度 [0,1] 透视投影（竖直 FOV，单位：度）
     static func perspective(fovYDegrees: Float, aspect: Float, near: Float, far: Float) -> simd_float4x4 {
         let f = 1.0 / tanf(fovYDegrees * .pi / 360.0)
         let nf = near - far
-        return simd_float4x4(rows: (
+        return simd_float4x4(rows: [
             simd_float4(f / aspect, 0, 0, 0),
             simd_float4(0, f, 0, 0),
             simd_float4(0, 0, far / nf, far * near / nf),
             simd_float4(0, 0, -1, 0)
-        ))
+        ])
     }
 
     /// Metal 深度 [0,1] 正交投影（view z ∈ [-far, -near] -> ndc z ∈ [1, 0]）
     static func ortho(left: Float, right: Float, bottom: Float, top: Float, near: Float, far: Float) -> simd_float4x4 {
         let fn = far - near
-        return simd_float4x4(rows: (
+        return simd_float4x4(rows: [
             simd_float4(2 / (right - left), 0, 0, -(right + left) / (right - left)),
             simd_float4(0, 2 / (top - bottom), 0, -(top + bottom) / (top - bottom)),
             simd_float4(0, 0, -1 / fn, -near / fn),
             simd_float4(0, 0, 0, 1)
-        ))
+        ])
     }
 
     static func lookAt(eye: simd_float3, center: simd_float3, up: simd_float3) -> simd_float4x4 {
@@ -56,12 +71,12 @@ extension simd_float4x4 {
         if length(x) < 1e-6 { x = cross(simd_float3(0, 0, 1), z) }
         x = normalize(x)
         let y = cross(z, x)
-        return simd_float4x4(rows: (
+        return simd_float4x4(rows: [
             simd_float4(x.x, x.y, x.z, -dot(x, eye)),
             simd_float4(y.x, y.y, y.z, -dot(y, eye)),
             simd_float4(z.x, z.y, z.z, -dot(z, eye)),
             simd_float4(0, 0, 0, 1)
-        ))
+        ])
     }
 }
 
@@ -85,7 +100,8 @@ func interpolateTrack(a: [Float], b: [Float], frac: Float) -> (q: simd_quatf, t:
     let q = simd_slerp(simd_quatf(track: a), simd_quatf(track: b), frac)
     let ta = simd_float3(a[4], a[5], a[6]), tb = simd_float3(b[4], b[5], b[6])
     let sa = simd_float3(a[7], a[8], a[9]), sb = simd_float3(b[7], b[8], b[9])
-    return (q, mix(ta, tb, simd_float3(repeating: frac)), mix(sa, sb, simd_float3(repeating: frac)))
+    // Apple simd 的 mix 签名是 mix(_:_:t:)（带标签），shim 同步
+    return (q, mix(ta, tb, t: simd_float3(repeating: frac)), mix(sa, sb, t: simd_float3(repeating: frac)))
 }
 
 // MARK: - 级联阴影（复刻桌面端 _cascade_matrices）
