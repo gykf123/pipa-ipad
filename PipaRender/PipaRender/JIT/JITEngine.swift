@@ -43,8 +43,7 @@ public final class JITPage {
 public enum JITEngine {
 
     /// 把 ARM64 机器码搬进可执行内存。
-    /// macOS：MAP_JIT + pthread_jit_write_protect（W^X 切换）。
-    /// iOS：MAP_JIT 需 allow-jit entitlement / 调试器放行；写后 sys_icache_invalidate。
+    /// Darwin：MAP_JIT（需 allow-jit entitlement / 调试器放行； entitlement 进程页可直接写）。
     /// Linux：RWX 匿名映射（CI x86_64 不解执行，仅接口占位）。
     public static func makeExecutable(_ code: [UInt8]) throws -> JITPage {
         guard !code.isEmpty else { throw JITError.writeFailed }
@@ -66,15 +65,10 @@ public enum JITEngine {
         #endif
         guard let p = raw, p != MAP_FAILED else { throw JITError.mmapFailed(errno: errno) }
         #if canImport(Darwin)
-        #if os(macOS)
-        pthread_jit_write_protect(0)          // 开写（macOS 专属 W^X 切换）
-        #endif
+        // 带 com.apple.security.cs.allow-jit 的进程：MAP_JIT 页可直接写。
+        // pthread_jit_write_protect 未导出到 Swift（macOS 10.14+、iOS 不可用），
+        // 且仅非 JIT app 才需要它做 W^X 切换；JIT app 由 entitlement 放行。
         memcpy(p, code, code.count)
-        #if os(macOS)
-        pthread_jit_write_protect(1)          // 回执行（Apple 核 I-cache 自动一致）
-        #endif
-        // iOS：MAP_JIT 页语义自带 I-cache 一致性（写入对指令可见），无需显式失效；
-        // sys_icache_invalidate 不在 Swift iOS SDK 导出面，强声明反而有符号风险
         #else
         memcpy(p, code, code.count)
         #endif
