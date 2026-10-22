@@ -133,7 +133,8 @@ jobs:
           </plist>
           EOF
           swiftc -O -o jit_exec_check main.swift \
-            ../../PipaRender/PipaRender/JIT/JITEngine.swift
+            ../../PipaRender/PipaRender/JIT/JITEngine.swift \
+            ../../PipaRender/PipaRender/Render/RenderMath.swift
           codesign --sign - --entitlements jit.entitlements --force jit_exec_check
           # 3. 真执行：mmap 跑 ARM64 内核 vs Swift 参考输出（Skinner.matrices 语义等价）
           cp ../jit_encode_check/jit_code.bin ../jit_encode_check/jit_track.bin \

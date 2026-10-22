@@ -26,6 +26,7 @@ let expectedRows = expectedText.split(separator: "\n").map { $0.split(separator:
 
 let frames = 3, nbones = 4
 let armFloats = arm.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+// jit_arm.bin 为行主序 16 floats（RenderMath 的 init(rowMajor:) 转列主序存储）
 let aw = simd_float4x4(rowMajor: armFloats)
 
 guard let page = try? JITEngine.makeExecutable([UInt8](code)) else {
@@ -37,17 +38,18 @@ var failed = false
 for fi in 0..<frames {
     var out = [Float](repeating: 0, count: nbones * 16)
     let trackPtr = track.withUnsafeBytes { $0.bindMemory(to: Float.self).baseAddress! }
-    var awCopy = aw
-    let ok = withUnsafeMutablePointer(to: &out) { outPtr in
+    let ok = out.withUnsafeMutableBufferPointer { outBuf -> Bool in
+        guard let outPtr = outBuf.baseAddress else { return false }
+        var awCopy = aw
         page.call { ptr in
             typealias Fn = @convention(c) (
                 UnsafeRawPointer, Int32, Int32, Int32, Int32, Float,
-                UnsafeRawPointer, UnsafeMutablePointer) -> Void
+                UnsafeRawPointer, UnsafeMutablePointer<Float>) -> Void
             let fn = unsafeBitCast(ptr, to: Fn.self)
             fn(trackPtr, 0, Int32(frames), Int32(nbones), 0, Float(fi),
                withUnsafePointer(to: &awCopy) { UnsafeRawPointer($0) }, outPtr)
         }
-        true
+        return true
     }
     guard ok else { print("FAIL call"); exit(2) }
     let ref = expectedRows[fi * nbones..<(fi + 1) * nbones]
