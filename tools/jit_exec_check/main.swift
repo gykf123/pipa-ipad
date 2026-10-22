@@ -26,8 +26,9 @@ let expectedRows = expectedText.split(separator: "\n").map { $0.split(separator:
 
 let frames = 3, nbones = 4
 let armFloats = arm.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-// jit_arm.bin 为行主序 16 floats（RenderMath 的 init(rowMajor:) 转列主序存储）
-let aw = simd_float4x4(rowMajor: armFloats)
+// jit_arm.bin 为行主序 16 floats；内核按行主序行连续读（stride 16B），直接传数组内存
+// （不能传 simd_float4x4 对象——那是列主序，相当于转置，数值全错）
+let aw = simd_float4x4(rowMajor: armFloats)   // 仅供调试打印，不传入内核
 
 guard let page = try? JITEngine.makeExecutable([UInt8](code)) else {
     print("FAIL makeExecutable"); exit(2)
@@ -39,9 +40,9 @@ var failed = false
 for fi in 0..<frames {
     var out = [Float](repeating: 0, count: nbones * 16)
     let trackPtr = track.withUnsafeBytes { $0.bindMemory(to: Float.self).baseAddress! }
+    let armPtr = armFloats.withUnsafeBufferPointer { UnsafeRawPointer($0.baseAddress!) }
     let ok = out.withUnsafeMutableBufferPointer { outBuf -> Bool in
         guard let outPtr = outBuf.baseAddress else { return false }
-        var awCopy = aw
         page.call { ptr in
             // 内核 ABI 跳过 x5（见 JITKernels 头注）：INT 参数序列必须显式占位一个
             // Int32，否则 armatureWorld 落 x5 / out 落 x6，内核读 x6/x7 即总线错误。
@@ -51,8 +52,7 @@ for fi in 0..<frames {
                 UnsafeRawPointer, UnsafeMutablePointer<Float>) -> Void
             let fn = unsafeBitCast(ptr, to: Fn.self)
             fn(trackPtr, 0, Int32(frames), Int32(nbones), 0, Float(fi),
-               0,
-               withUnsafePointer(to: &awCopy) { UnsafeRawPointer($0) }, outPtr)
+               0, armPtr, outPtr)
         }
         return true
     }
