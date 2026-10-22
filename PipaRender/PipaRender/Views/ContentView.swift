@@ -20,7 +20,7 @@ struct ContentView: View {
                     if packages.isEmpty {
                         Text("还没有导入渲染包\n点右上角导入 .pipapkg.zip")
                             .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: center)
+                            .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.vertical, 40)
                     }
                     ForEach(packages, id: \.id) { p in

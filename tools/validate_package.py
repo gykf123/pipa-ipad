@@ -88,6 +88,11 @@ def validate(path, verbose=False):
             return np.zeros(count, dtype=np.float32)
         return np.frombuffer(buf, dtype='<f4')
 
+    def _read_at(z, fn, byte_off, nbytes):
+        with z.open(fn) as f:
+            f.seek(byte_off)
+            return f.read(nbytes)
+
     # ---------- camera ----------
     cam = pkg.get('camera') or {}
     cam_file = cam.get('buffer') or cam.get('file')
@@ -131,7 +136,6 @@ def validate(path, verbose=False):
     if not groups:
         r.fail("groups[] 为空 —— 没有任何可渲染网格")
     mesh_file = None
-    total_idx_max = -1
     for g in groups:
         gn = g.get('name', '?')
         buf = g.get('buf') or {}
@@ -159,7 +163,22 @@ def validate(path, verbose=False):
             if off + cnt * isz > sz:
                 r.fail(f"组 {gn}: buf.{attr} [offset={off},count={cnt}] 越界（{fn} 仅 {sz}B）")
             if attr == 'idx':
-                total_idx_max = max(total_idx_max, -1)
+                # 真读索引：越界 -> drawIndexed 读别组内存（花屏/崩管线）；并查退化三角形
+                idx = np.frombuffer(_read_at(zf, fn, off, cnt * U4), dtype='<u4') if cnt else np.zeros(0, '<u4')
+                vc = g.get('verts')
+                if vc is not None and cnt and int(idx.max()) >= vc:
+                    r.fail(f"组 {gn}: 索引越界 max={int(idx.max())} >= verts={vc}（drawIndexed 将读到别组数据）")
+                if cnt and cnt % 3:
+                    r.fail(f"组 {gn}: 索引数 {cnt} 不是 3 的倍数")
+                if cnt >= 3:
+                    tris = idx.reshape(-1, 3)
+                    if (tris[:,0]==tris[:,1]).any() or (tris[:,1]==tris[:,2]).any():
+                        r.warn(f"组 {gn}: 存在退化三角形（索引重复）")
+            if attr == 'uv' and cnt >= 2:
+                uv = read_f4(fn, cnt, float_offset=off // F4).reshape(-1, 2)
+                if uv.min() < -0.001 or uv.max() > 1.001:
+                    r.warn(f"组 {gn}: UV 越界 [{uv.min():.3f},{uv.max():.3f}]"
+                           "（albedo sampler 为 repeat，源数据约定不同时贴图会重复错位）")
         # 组级字段
         for f, req in (('color', 'warn'), ('bounds', 'fail'), ('texture', 'info')):
             if f not in g:

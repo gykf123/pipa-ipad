@@ -61,11 +61,13 @@ def expand_attrs(attrs):
     return cols
 
 
-def convert(src, dst, skin=None, resolution=(1920, 1080), keep_hat=True):
+def convert(src, dst, skin=None, resolution=(1920, 1080), keep_hat=True, uv_clamp=False):
     zin = zipfile.ZipFile(src)
     pkg = json.loads(zin.read('package.json').decode('utf-8'))
+    # v2 检测：App 读的是「顶层 groups」式 v2（pack_package.py 产物）→ 跳过；
+    # 「meshes.groups」式 v2（部分外部导出工具，如 creeper 场景包）顶层无 groups → 仍需转换
     if pkg.get('version') == 2 and 'groups' in pkg:
-        print("已是 v2，无需转换"); return
+        print("已是 v2（顶层 groups 式），无需转换"); return
 
     frames = pkg['frames']
     fps = pkg['fps']
@@ -94,6 +96,9 @@ def convert(src, dst, skin=None, resolution=(1920, 1080), keep_hat=True):
     idt = str(pkg['indices'].get('dtype', 'uint32')).lower()
     idx_dt = '<u2' if idt in ('uint16', 'u2') else '<u4'
     idx_all = np.frombuffer(zin.read(pkg['indices']['file']), dtype=idx_dt)
+    # 索引基准分流：v1 无此字段，索引为全局顶点索引（减 vertex_offset 得组内局部）；
+    # 显式声明 group_local 的包（部分 v2 导出工具）索引已是组内局部，原样使用
+    index_base = str(pkg['indices'].get('index_base', 'global')).lower()
     assert idx_all.size == pkg['indices']['count'], \
         f"indices 数量不符: {idx_all.size} != {pkg['indices']['count']}"
 
@@ -126,8 +131,12 @@ def convert(src, dst, skin=None, resolution=(1920, 1080), keep_hat=True):
         if not keep_hat and g['name'] == 'hat':
             continue
         uv_off[gi] = len(new_mesh)
-        new_mesh += np.stack([A['u'][v0:v0+n], A['v'][v0:v0+n]],
-                             axis=1).astype('<f4').tobytes()
+        u_, v_ = A['u'][v0:v0+n], A['v'][v0:v0+n]
+        if uv_clamp:
+            # 部分导出工具（如 creeper 场景）UV 带越界 padding；App albedo sampler 为 repeat，
+            # 越界 UV 会绕回采样导致贴图错位。夹到 [0,1] 治标（不重排图集）
+            u_, v_ = np.clip(u_, 0.0, 1.0), np.clip(v_, 0.0, 1.0)
+        new_mesh += np.stack([u_, v_], axis=1).astype('<f4').tobytes()
     # 第二遍：indices 追加尾部，全局顶点索引 -> 组内局部索引（v2 每组独立顶点区间）
     idx_base = len(new_mesh)
     idx_off = {}
@@ -137,8 +146,12 @@ def convert(src, dst, skin=None, resolution=(1920, 1080), keep_hat=True):
         v0 = g['vertex_offset']
         i0, ic = g['index_offset'], g['index_count']
         idx_off[gi] = idx_base + (len(new_mesh) - idx_base)
-        local = (idx_all[i0:i0+ic] - v0).astype('<u4')   # 全局 -> 组内局部
-        assert local.min() >= 0 and local.max() < g['vertex_count']
+        if index_base in ('group_local', 'local'):
+            local = idx_all[i0:i0+ic].astype('<u4')      # 已是组内局部索引
+        else:
+            local = (idx_all[i0:i0+ic] - v0).astype('<u4')  # 全局 -> 组内局部
+        assert local.min() >= 0 and local.max() < g['vertex_count'], \
+            f"组 {g['name']} 索引越界（index_base={index_base}）：min={local.min()} max={local.max()} vc={g['vertex_count']}"
         new_mesh += local.tobytes()
 
     for gi, g in enumerate(m['groups']):
@@ -209,6 +222,14 @@ def convert(src, dst, skin=None, resolution=(1920, 1080), keep_hat=True):
     print(f"转换完成: {dst}")
     print(f"  groups={len(groups_out)}  frames={frames}  verts={vc}")
     print(f"  meshes.bin={len(new_mesh)}B  movers.bin={mv_group_major.nbytes}B（组主序重排）")
+    if index_base in ('group_local', 'local'):
+        print(f"  索引基准: {index_base}（源已是组内局部索引，未做 offset 平移）")
+    if not uv_clamp:
+        umin, umax = A['u'].min(), A['u'].max()
+        vmin, vmax = A['v'].min(), A['v'].max()
+        if min(umin, vmin) < -0.001 or max(umax, vmax) > 1.001:
+            print(f"  [warn] 源 UV 越界 u[{umin:.3f},{umax:.3f}] v[{vmin:.3f},{vmax:.3f}]"
+                  "（App albedo sampler 为 repeat，会绕回错位；可加 --uv-clamp 夹到 [0,1]）")
     if pkg.get('bones'):
         print(f"  [注意] 源 bones.bin 已丢弃（movers 已含全部动画，世界矩阵语义）")
 
@@ -221,6 +242,8 @@ def main():
     ap.add_argument('--skin', default='skins/char1.png', help='角色部件统一贴图（默认 skins/char1.png）')
     ap.add_argument('--resolution', default='1920x1080')
     ap.add_argument('--no-hat', action='store_true', help='剔除 hat 组（帽子层突兀时可选）')
+    ap.add_argument('--uv-clamp', action='store_true',
+                    help='UV 夹到 [0,1]（源包 UV 越界且 sampler 为 repeat 时贴图会绕回错位）')
     a = ap.parse_args()
     dst = a.out or os.path.splitext(a.src)[0] + '.v2.zip'
     w, h = map(int, a.resolution.lower().split('x'))
@@ -231,7 +254,7 @@ def main():
         print(f"[warn] {skin} 不在包内，组将无贴图")
         skin = None
     zz.close()
-    convert(a.src, dst, skin=skin, resolution=(w, h), keep_hat=not a.no_hat)
+    convert(a.src, dst, skin=skin, resolution=(w, h), keep_hat=not a.no_hat, uv_clamp=a.uv_clamp)
 
 
 if __name__ == '__main__':

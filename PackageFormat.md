@@ -223,3 +223,19 @@ fade = 1 (t < 0.72·life) 否则 (1 - t/life) / 0.28
 `total = min(shadow_distance, far·0.95)`；每级用视锥截面求包围球，
 `light_view = look_at(center - sun_dir·(r·2.5), center, up)`，
 `light_proj = ortho(±r, ±r, 0.01, r·5)`（Metal 深度 [0,1] 变体）。
+
+## 10. 外部包导入兼容性（convert_v1_to_v2.py）
+
+App 只读**顶层 `groups` 式 v2**（本文档主体）。外部工具的两种旧结构由转换器归一化：
+
+| 源结构 | 特征 | 转换器处理 |
+|---|---|---|
+| v1 | `meshes.groups` + 顶层 `indices` 段，8 标量交错数组，索引为**全局**顶点索引 | 标量数组转 SoA；`idx - vertex_offset` 得组内局部索引；movers 重组主序 |
+| v2 变体 | `meshes.groups` + 顶层 `indices` 段，`indices.index_base = "group_local"` | 索引已是组内局部，**原样透传**（不做 offset 平移） |
+
+- `indices.dtype`：`uint16` / `uint32` 均支持（按元数据声明读，输出统一 `u4`）
+- `indices.index_base`：v1 无此字段（默认 `global`）；显式 `group_local` 时转换器分流处理
+- UV 越界（部分导出工具带 padding）：默认忠实透传，`--uv-clamp` 可夹到 [0,1]
+  （App 的 albedo sampler 为 `repeat`，越界 UV 会绕回采样导致贴图错位）
+- 法线未单位化：无害，App 顶点 shader 每顶点 `normalize`（只影响插值线性度）
+

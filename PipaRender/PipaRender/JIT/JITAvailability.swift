@@ -46,7 +46,7 @@ public enum JITAvailability {
     /// mmap(MAP_JIT) 能力探测（不执行任何代码，零风险）
     public static func mapProbe() -> Bool {
         #if canImport(Darwin)
-        var pageSize = vm_page_size
+        var pageSize = Int(vm_page_size)
         let p = mmap(nil, pageSize, PROT_READ | PROT_WRITE,
                      MAP_ANON | MAP_PRIVATE | MAP_JIT, -1, 0)
         guard p != MAP_FAILED else { return false }

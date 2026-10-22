@@ -40,16 +40,19 @@ public final class JITPage {
 public enum JITEngine {
 
     /// 把 ARM64 机器码搬进可执行内存。
-    /// Darwin：MAP_JIT + pthread_jit_write_protect（W^X 切换）。
+    /// macOS：MAP_JIT + pthread_jit_write_protect（W^X 切换）。
+    /// iOS：MAP_JIT 需 allow-jit entitlement / 调试器放行；写后 sys_icache_invalidate。
     /// Linux：RWX 匿名映射（CI x86_64 不解执行，仅接口占位）。
     public static func makeExecutable(_ code: [UInt8]) throws -> JITPage {
         guard !code.isEmpty else { throw JITError.writeFailed }
         #if canImport(Darwin)
-        var pageSize = vm_page_size
+        let pageSize = Int(vm_page_size)
         #else
         let pageSize = Int(getpagesize())
         #endif
-        let size = (code.count + pageSize - 1) / pageSize * pageSize
+        // 向上取整到整页（拆两句，避免巨型表达式拖垮类型检查器）
+        let pages = (code.count + pageSize - 1) / pageSize
+        let size = pages * pageSize
 
         #if canImport(Darwin)
         let raw = mmap(nil, size, PROT_READ | PROT_WRITE,
@@ -60,11 +63,17 @@ public enum JITEngine {
         #endif
         guard let p = raw, p != MAP_FAILED else { throw JITError.mmapFailed(errno: errno) }
         #if canImport(Darwin)
-        pthread_jit_write_protect(0)          // 开写
+        #if os(macOS)
+        pthread_jit_write_protect(0)          // 开写（macOS 专属 W^X 切换）
         #endif
         memcpy(p, code, code.count)
-        #if canImport(Darwin)
+        #if os(macOS)
         pthread_jit_write_protect(1)          // 回执行（Apple 核 I-cache 自动一致）
+        #else
+        sys_icache_invalidate(p, size)        // iOS：写入后显式失效 I-cache
+        #endif
+        #else
+        memcpy(p, code, code.count)
         #endif
         return JITPage(address: p, size: size)
     }
