@@ -107,7 +107,7 @@ struct PackageDetailView: View {
     private func startJob() {
         let n = pkg.pkg.frameCount
         let start = useFullRange ? 0 : Int(max(0, min(rangeStart, Float(n - 1))))
-        let end = useFullRange ? n - 1 : Int(max(start, min(rangeEnd, Float(n - 1))))
+        let end = useFullRange ? n - 1 : Int(max(Float(start), min(rangeEnd, Float(n - 1))))
         var s = RenderSettings()
         s.outputFPS = outputFPS
         s.occupancy = occupancy

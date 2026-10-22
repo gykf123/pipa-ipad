@@ -69,11 +69,12 @@ final class MetalRenderer {
 
         let p = pkg.pkg
         // 灯光（静态，一次上传）
-        let nLights = min(p.lights.count, MAX_LIGHTS)
+        // 注意：MAX_LIGHTS/MAX_BONES 是 C #define，Swift 导入为 Int32——与 Int 运算前先转
+        let nLights = min(p.lights.count, Int(MAX_LIGHTS))
         lightsBuffer = device.makeBuffer(length: max(nLights, 1) * MemoryLayout<LightData>.stride,
                                          options: .storageModeShared)
         var ldata: [LightData] = []
-        for l in p.lights.prefix(MAX_LIGHTS) {
+        for l in p.lights.prefix(Int(MAX_LIGHTS)) {
             let isArea = (l.type == "AREA") ? 1.0 : 0.0
             let nrm = l.normal ?? [0, 0, 0]
             ldata.append(LightData(pos: simd_float4(l.pos[0], l.pos[1], l.pos[2], 0),
@@ -90,7 +91,7 @@ final class MetalRenderer {
             guard c.boneCount <= MAX_BONES else {
                 throw PackageError.corruptData("角色 \(c.name) 骨骼数 \(c.boneCount) 超过上限 \(MAX_BONES)")
             }
-            bonesBuffers.append(device.makeBuffer(length: MAX_BONES * 64, options: .storageModeShared)!)
+            bonesBuffers.append(device.makeBuffer(length: Int(MAX_BONES) * 64, options: .storageModeShared)!)
         }
 
         // 可见性 / 碎块
@@ -106,7 +107,8 @@ final class MetalRenderer {
         }
 
         uniformBuffer = device.makeBuffer(length: MemoryLayout<Uniforms>.stride, options: .storageModeShared)!
-        CVMetalTextureCacheCreate(nil, nil, nil, nil, &textureCache)
+        // CVMetalTextureCacheCreate(allocator, attributes, metalDevice, out)：第 3 参是非可选 MTLDevice
+        CVMetalTextureCacheCreate(nil, nil, device, &textureCache)
         rebuildTargetsIfNeeded()
     }
 
@@ -144,7 +146,7 @@ final class MetalRenderer {
         glareB = tex(.rgba16Float, internalW, internalH)
         bloomA = tex(.rgba16Float, internalW / 2, internalH / 2)
         bloomB = tex(.rgba16Float, internalW / 2, internalH / 2)
-        shadowTex = (0..<3).map { tex(.depth32Float, quality.shadowMapSize, quality.shadowMapSize) }
+        shadowTex = (0..<3).map { _ in tex(.depth32Float, quality.shadowMapSize, quality.shadowMapSize) }
     }
 
     /// 预览 drawable 尺寸变化（只影响投影宽高比；渲染目标按内部尺寸）
@@ -183,8 +185,8 @@ final class MetalRenderer {
         }
         fd.near = near; fd.far = far
 
-        if usePackageCamera {
-            let vm = pkg.floats(p.camera.buffer, byteOffset: fi * 64, count: 16)
+        if usePackageCamera,
+           let vm = try? pkg.floats(p.camera.buffer, byteOffset: fi * 64, count: 16), vm.count == 16 {
             fd.view = simd_float4x4(rowMajor: vm)
         } else {
             let eye = previewTarget + simd_float3(cosf(previewYaw) * cosf(previewPitch),
@@ -252,7 +254,8 @@ final class MetalRenderer {
     /// 动态组当前帧矩阵（movers.bin 布局：按 groups 顺序拼接的 [frames][16]）
     private func moversMatrix(frame fi: Int, group gi: Int) -> simd_float4x4? {
         guard let buf = assets.movers, let g = pkg.pkg.groups[gi].mat else { return nil }
-        let ptr = buf.contents().bindMemory(to: Float.self).baseAddress!
+        // bindMemory(to:capacity:) 才返回可用指针； typed 指针没有 baseAddress 成员
+        let ptr = buf.contents().bindMemory(to: Float.self, capacity: buf.length / MemoryLayout<Float>.stride)
         let base = ptr.advanced(by: (g.offset / 4) + fi * 16)
         return simd_float4x4(rowMajor: Array(UnsafeBufferPointer(start: base, count: 16)))
     }
@@ -290,7 +293,7 @@ final class MetalRenderer {
         u.glareThreshold = simd_float4(d.glareThreshold, d.glareSmoothness, 0, 0)
         u.screen = simd_float4(Float(internalW), Float(internalH), 1.0 / Float(internalW), 1.0 / Float(internalH))
         u.particleParams = simd_float4(d.particleWidth, d.particleScale, d.particleStreak, 0)
-        u.numLights = simd_float4(Float(min(p.lights.count, MAX_LIGHTS)), Float(quality.aoSamples), 0, 0)
+        u.numLights = simd_float4(Float(min(p.lights.count, Int(MAX_LIGHTS))), Float(quality.aoSamples), 0, 0)
         u.flipMode = simd_float4(0, 0, 0, 0)
         return u
     }
@@ -364,7 +367,7 @@ final class MetalRenderer {
                 guard let enc = cb.makeRenderCommandEncoder(descriptor: pd) else { continue }
                 enc.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(quality.shadowMapSize),
                                             height: Double(quality.shadowMapSize), znear: 0, zfar: 1))
-                enc.setVertexBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
+                enc.setVertexBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
                 encodeGroups(enc: enc, fd: fd, shadow: true)
                 encodeDebris(enc: enc, shadow: true)
                 encodeCharacters(enc: enc, shadow: true)
@@ -413,9 +416,9 @@ final class MetalRenderer {
             if let e = cb.makeRenderCommandEncoder(descriptor: pd) {
                 e.setRenderPipelineState(assets.pipelines.ssao)
                 e.setViewport(viewport(internalW, internalH))
-                e.setVertexBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
-                e.setFragmentBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
-                e.setFragmentBuffer(assets.aoKernel, offset: 0, index: BufferIndexAOKernel.rawValue)
+                e.setVertexBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
+                e.setFragmentBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
+                e.setFragmentBuffer(assets.aoKernel, offset: 0, index: Int(BufferIndexAOKernel.rawValue))
                 e.setFragmentTexture(viewposTex, index: 0)
                 e.setFragmentTexture(normalTex, index: 1)
                 e.setFragmentTexture(assets.noiseTexture, index: 2)
@@ -440,9 +443,9 @@ final class MetalRenderer {
         if let e = cb.makeRenderCommandEncoder(descriptor: lp) {
             e.setRenderPipelineState(assets.pipelines.lighting)
             e.setViewport(viewport(internalW, internalH))
-            e.setVertexBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
-            e.setFragmentBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
-            e.setFragmentBuffer(lightsBuffer, offset: 0, index: BufferIndexLights.rawValue)
+            e.setVertexBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
+            e.setFragmentBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
+            e.setFragmentBuffer(lightsBuffer, offset: 0, index: Int(BufferIndexLights.rawValue))
             e.setFragmentTexture(albedoTex, index: 0)
             e.setFragmentTexture(normalTex, index: 1)
             e.setFragmentTexture(viewposTex, index: 2)
@@ -462,17 +465,17 @@ final class MetalRenderer {
             pp.colorAttachments[0].storeAction = .store
             if let e = cb.makeRenderCommandEncoder(descriptor: pp) {
                 e.setViewport(viewport(internalW, internalH))
-                e.setVertexBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
-                e.setFragmentBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
+                e.setVertexBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
+                e.setFragmentBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
                 // 拖尾
                 e.setRenderPipelineState(assets.pipelines.tracer)
                 e.setVertexBuffer(assets.templateCornerStrip, offset: 0, index: 0)
-                e.setVertexBuffer(assets.tracerInstances, offset: 0, index: BufferIndexParticleInstance.rawValue)
+                e.setVertexBuffer(assets.tracerInstances, offset: 0, index: Int(BufferIndexParticleInstance.rawValue))
                 e.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: assets.activeTracerCount)
                 // 点精灵
                 e.setRenderPipelineState(assets.pipelines.point)
                 e.setVertexBuffer(assets.templateCornerQuad, offset: 0, index: 0)
-                e.setVertexBuffer(assets.pointInstances, offset: 0, index: BufferIndexParticleInstance.rawValue)
+                e.setVertexBuffer(assets.pointInstances, offset: 0, index: Int(BufferIndexParticleInstance.rawValue))
                 e.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: assets.activePointCount)
                 e.endEncoding()
             }
@@ -512,8 +515,8 @@ final class MetalRenderer {
         if let e = cb.makeRenderCommandEncoder(descriptor: tp) {
             e.setRenderPipelineState(assets.pipelines.tonemap)
             e.setViewport(viewport(targetW, targetH))
-            e.setVertexBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
-            e.setFragmentBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
+            e.setVertexBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
+            e.setFragmentBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
             e.setFragmentTexture(hdrTex, index: 0)
             e.setFragmentTexture((quality.bloom && d.bloom) ? bloomA : nil, index: 1)
             e.setFragmentTexture((quality.glare && d.glare) ? glareA : nil, index: 2)
@@ -545,17 +548,18 @@ final class MetalRenderer {
 
     private func bindMeshCommon(enc: MTLRenderCommandEncoder, mesh: MeshGPU, model: simd_float4x4) {
         var m = model
-        enc.setVertexBytes(&m, index: BufferIndexModel.rawValue)
-        enc.setVertexBuffer(mesh.pos, offset: 0, index: BufferIndexMeshPosition.rawValue)
-        enc.setVertexBuffer(mesh.nrm, offset: 0, index: BufferIndexMeshNormal.rawValue)
-        enc.setVertexBuffer(mesh.uv, offset: 0, index: BufferIndexMeshUV.rawValue)
+        // setVertexBytes/setFragmentBytes 的 length 为必填参数（Xcode 16 编译暴露）
+        enc.setVertexBytes(&m, length: MemoryLayout<simd_float4x4>.stride, index: Int(BufferIndexModel.rawValue))
+        enc.setVertexBuffer(mesh.pos, offset: 0, index: Int(BufferIndexMeshPosition.rawValue))
+        enc.setVertexBuffer(mesh.nrm, offset: 0, index: Int(BufferIndexMeshNormal.rawValue))
+        enc.setVertexBuffer(mesh.uv, offset: 0, index: Int(BufferIndexMeshUV.rawValue))
     }
 
     private func setDrawParams(enc: MTLRenderCommandEncoder, tint: simd_float4, emission: simd_float3, hasTex: Bool) {
         var t = tint, e = emission, h: Int32 = hasTex ? 1 : 0
-        enc.setFragmentBytes(&t, index: 14)
-        enc.setFragmentBytes(&e, index: 15)
-        enc.setFragmentBytes(&h, index: 16)
+        enc.setFragmentBytes(&t, length: MemoryLayout<simd_float4>.stride, index: 14)
+        enc.setFragmentBytes(&e, length: MemoryLayout<simd_float3>.stride, index: 15)
+        enc.setFragmentBytes(&h, length: MemoryLayout<Int32>.stride, index: 16)
     }
 
     /// 静态组（可见性 + 视锥已过滤）
@@ -569,7 +573,7 @@ final class MetalRenderer {
             enc.setRenderPipelineState(pipelineFor(shadow: shadow, skinned: false, cut: cut))
             bindMeshCommon(enc: enc, mesh: mesh, model: model)
             if let texName = g.texture, let tex = assets.sceneTextures[texName] {
-                enc.setFragmentTexture(tex, index: TextureIndexAlbedo.rawValue)
+                enc.setFragmentTexture(tex, index: Int(TextureIndexAlbedo.rawValue))
                 enc.setFragmentSamplerState(assets.sceneSampler, index: 0)
                 setDrawParams(enc: enc, tint: simd_float4(g.color[0], g.color[1], g.color[2], g.color[3]),
                               emission: simd_float3(g.emission[0], g.emission[1], g.emission[2]), hasTex: true)
@@ -588,7 +592,7 @@ final class MetalRenderer {
         let p = pkg.pkg
         let shade = p.defaults.debris.shade
         var m = matrix_identity_float4x4
-        enc.setVertexBytes(&m, index: BufferIndexModel.rawValue)
+        enc.setVertexBytes(&m, length: MemoryLayout<simd_float4x4>.stride, index: Int(BufferIndexModel.rawValue))
         // 取第一个合法事件所属 group 的外观（同一墙面撞坏事件外观一致）
         guard let ev = debrisEvents.first(where: { $0.group < p.groups.count }) else { return }
         let g = p.groups[ev.group]
@@ -596,12 +600,12 @@ final class MetalRenderer {
         enc.setRenderPipelineState(shadow
             ? (cut ? assets.pipelines.debrisShadowCut : assets.pipelines.debrisShadow)
             : (cut ? assets.pipelines.debrisGBufferCut : assets.pipelines.debrisGBuffer))
-        enc.setVertexBuffer(mesh.pos, offset: 0, index: BufferIndexMeshPosition.rawValue)
-        enc.setVertexBuffer(mesh.nrm, offset: 0, index: BufferIndexMeshNormal.rawValue)
-        enc.setVertexBuffer(mesh.uv, offset: 0, index: BufferIndexMeshUV.rawValue)
-        enc.setVertexBuffer(assets.debrisModels, offset: 0, index: BufferIndexDebrisModel.rawValue)
+        enc.setVertexBuffer(mesh.pos, offset: 0, index: Int(BufferIndexMeshPosition.rawValue))
+        enc.setVertexBuffer(mesh.nrm, offset: 0, index: Int(BufferIndexMeshNormal.rawValue))
+        enc.setVertexBuffer(mesh.uv, offset: 0, index: Int(BufferIndexMeshUV.rawValue))
+        enc.setVertexBuffer(assets.debrisModels, offset: 0, index: Int(BufferIndexDebrisModel.rawValue))
         if let texName = g.texture, let tex = assets.sceneTextures[texName] {
-            enc.setFragmentTexture(tex, index: TextureIndexAlbedo.rawValue)
+            enc.setFragmentTexture(tex, index: Int(TextureIndexAlbedo.rawValue))
             enc.setFragmentSamplerState(assets.sceneSampler, index: 0)
             setDrawParams(enc: enc, tint: simd_float4(shade, shade, shade, 1), emission: simd_float3(0, 0, 0), hasTex: true)
         } else {
@@ -621,11 +625,11 @@ final class MetalRenderer {
                 let mesh = assets.partMeshes[ci][pi]
                 enc.setRenderPipelineState(pipelineFor(shadow: shadow, skinned: true, cut: part.alphaCut))
                 bindMeshCommon(enc: enc, mesh: mesh, model: identity)
-                enc.setVertexBuffer(mesh.bi, offset: 0, index: BufferIndexMeshBoneIndex.rawValue)
-                enc.setVertexBuffer(mesh.bw, offset: 0, index: BufferIndexMeshBoneWeight.rawValue)
-                enc.setVertexBuffer(bones, offset: 0, index: BufferIndexBones.rawValue)
+                enc.setVertexBuffer(mesh.bi, offset: 0, index: Int(BufferIndexMeshBoneIndex.rawValue))
+                enc.setVertexBuffer(mesh.bw, offset: 0, index: Int(BufferIndexMeshBoneWeight.rawValue))
+                enc.setVertexBuffer(bones, offset: 0, index: Int(BufferIndexBones.rawValue))
                 if let tex = skinTex {
-                    enc.setFragmentTexture(tex, index: TextureIndexAlbedo.rawValue)
+                    enc.setFragmentTexture(tex, index: Int(TextureIndexAlbedo.rawValue))
                     enc.setFragmentSamplerState(assets.skinSampler, index: 0)
                     setDrawParams(enc: enc, tint: simd_float4(1, 1, 1, 1), emission: simd_float3(0, 0, 0), hasTex: true)
                 } else {
@@ -648,8 +652,8 @@ final class MetalRenderer {
         guard let e = cb.makeRenderCommandEncoder(descriptor: pd) else { return }
         e.setRenderPipelineState(pipeline)
         e.setViewport(viewport(w, h))
-        e.setVertexBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
-        e.setFragmentBuffer(uniformBuffer, offset: 0, index: BufferIndexUniforms.rawValue)
+        e.setVertexBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
+        e.setFragmentBuffer(uniformBuffer, offset: 0, index: Int(BufferIndexUniforms.rawValue))
         configure(e)
         e.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         e.endEncoding()
@@ -660,7 +664,7 @@ final class MetalRenderer {
         fullscreen(cb: cb, dst: dst, pipeline: assets.pipelines.blur, w: w ?? src.width, h: h ?? src.height) { e in
             e.setFragmentTexture(src, index: 0)
             e.setFragmentSamplerState(assets.screenSampler, index: 0)
-            e.setFragmentBytes(&d, index: 14)
+            e.setFragmentBytes(&d, length: MemoryLayout<simd_float2>.stride, index: 14)
         }
     }
 
@@ -669,8 +673,8 @@ final class MetalRenderer {
         fullscreen(cb: cb, dst: dst, pipeline: assets.pipelines.bright, w: w, h: h) { e in
             e.setFragmentTexture(src, index: 0)
             e.setFragmentSamplerState(assets.screenSampler, index: 0)
-            e.setFragmentBytes(UnsafeRawPointer(threshold), index: 14)
-            e.setFragmentBytes(UnsafeRawPointer(smoothness), index: 15)
+            e.setFragmentBytes(UnsafeRawPointer(threshold), length: MemoryLayout<simd_float4>.stride, index: 14)
+            e.setFragmentBytes(UnsafeRawPointer(smoothness), length: MemoryLayout<simd_float4>.stride, index: 15)
         }
     }
 }
