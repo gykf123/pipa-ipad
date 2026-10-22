@@ -230,18 +230,16 @@ final class MetalRenderer {
         }
         fd.visibleGroups = vis
 
-        // 骨骼矩阵（每角色）
+        // 骨骼矩阵（每角色）：JIT 内核优先，自动降级 Skinner.swift
         let track = try? pkg.blob("bones.bin")
         if let track = track {
             for (ci, c) in p.characters.enumerated() {
-                let mats = Skinner.matrices(track: track, charOffsetFloats: assets.boneOffsets[ci],
-                                            frames: c.boneBuffer.frames, boneCount: c.boneCount,
-                                            frameStart: p.frameStart, frame: Float(fi),
-                                            armatureWorld: simd_float4x4(rowMajor: c.armatureWorld))
                 let dst = bonesBuffers[ci].contents()
-                for (bi, m) in mats.enumerated() {
-                    withUnsafePointer(to: m) { memcpy(dst.advanced(by: bi * 64), $0, 64) }
-                }
+                SkinKernel.matrices(track: track, charOffsetFloats: assets.boneOffsets[ci],
+                                    frames: c.boneBuffer.frames, boneCount: c.boneCount,
+                                    frameStart: p.frameStart, frame: Float(fi),
+                                    armatureWorld: simd_float4x4(rowMajor: c.armatureWorld),
+                                    into: dst)
             }
         }
 

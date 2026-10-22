@@ -16,6 +16,19 @@ simd.swiftmodule
 simd.swiftdoc
 simd.swiftsourceinfo
 
+# JIT 工具构建产物（jit_runner / jit_exec_check 二进制 + 生成的数据文件）
+# 注意：jit_exec_check 二进制与 tools/jit_exec_check/ 目录同名，须锚定全路径避免误伤目录
+jit_runner
+/tools/jit_exec_check/jit_exec_check
+jit_report.txt
+kernel_ref.o
+jit.entitlements
+jit_code.bin
+jit_track.bin
+jit_arm.bin
+jit_expected.txt
+bone_input.txt
+
 # 系统文件
 .DS_Store
 push_via_api.py

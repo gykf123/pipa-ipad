@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- PipaRender 无特殊系统能力需求（本地渲染 + 相册写入走运行时授权） -->
+	<!-- JIT 加速（骨骼蒙皮内核运行时编译执行）。
+	     普通签名安装时系统剥离该 entitlement -> MAP_JIT 失败 -> 自动降级 Swift 实现；
+	     巨魔/nbtool 类漏洞签名保留生效；StikDebug 调试器路径启动前开启即可。
+	     无任何强制依赖：探测失败全程走 Skinner.swift 参考实现。 -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
 </dict>
 </plist>

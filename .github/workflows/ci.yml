@@ -58,6 +58,26 @@ jobs:
           LD_LIBRARY_PATH=. ./test_runner
           python3 compare.py
 
+      - name: JIT 编码验证（结构断言 + clang golden-bytes 比对）
+        run: |
+          set -e
+          cd tools/jit_encode_check
+          # Linux 无 simd 模块：编译兼容层（与 swift_logic_check 同款 shim）
+          swiftc -emit-module -emit-library -module-name simd ../swift_logic_check/simd_shim.swift -o libsimd.so
+          swiftc -I. -L. -lsimd -o jit_runner main.swift \
+            ../../PipaRender/PipaRender/Render/RenderMath.swift \
+            ../../PipaRender/PipaRender/Render/Skinner.swift \
+            ../../PipaRender/PipaRender/JIT/JITAssembler.swift \
+            ../../PipaRender/PipaRender/JIT/JITKernels.swift \
+            ../../PipaRender/PipaRender/JIT/JITEngine.swift \
+            ../../PipaRender/PipaRender/JIT/JITAvailability.swift \
+            ../../PipaRender/PipaRender/JIT/JITSkinning.swift
+          LD_LIBRARY_PATH=. ./jit_runner
+          cd ../..
+          # golden-bytes：clang 交叉汇编 kernel_ref.s 作权威参考逐字节比对。
+          # 手写编码器没有编译器兜底——曾编出不存在的 GP SMAX/SMIN（真机 SIGILL）。
+          python3 tools/golden_check/golden_diff.py tools/jit_encode_check/jit_code.bin
+
   ios-build:
     name: iOS 编译验证（macOS，不签名）
     runs-on: macos-15
@@ -85,6 +105,40 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             ONLY_ACTIVE_ARCH=NO \
             build
+
+      - name: JIT 内核真执行验证（macOS arm64 + allow-jit 签名）
+        run: |
+          set -e
+          # 1. 生成确定性数据文件（与 Linux 同款 jit_runner；macOS 用原生 simd 无需 shim）
+          cd tools/jit_encode_check
+          swiftc -O -o jit_runner main.swift \
+            ../../PipaRender/PipaRender/Render/RenderMath.swift \
+            ../../PipaRender/PipaRender/Render/Skinner.swift \
+            ../../PipaRender/PipaRender/JIT/JITAssembler.swift \
+            ../../PipaRender/PipaRender/JIT/JITKernels.swift \
+            ../../PipaRender/PipaRender/JIT/JITEngine.swift \
+            ../../PipaRender/PipaRender/JIT/JITAvailability.swift \
+            ../../PipaRender/PipaRender/JIT/JITSkinning.swift
+          ./jit_runner > /dev/null
+          # 2. ad-hoc 签名 + allow-jit entitlement（macOS 上放行 MAP_JIT）
+          cd ../jit_exec_check
+          cat > jit.entitlements <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.security.cs.allow-jit</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          swiftc -O -o jit_exec_check main.swift \
+            ../../PipaRender/PipaRender/JIT/JITEngine.swift
+          codesign --sign - --entitlements jit.entitlements --force jit_exec_check
+          # 3. 真执行：mmap 跑 ARM64 内核 vs Swift 参考输出（Skinner.matrices 语义等价）
+          cp ../jit_encode_check/jit_code.bin ../jit_encode_check/jit_track.bin \
+             ../jit_encode_check/jit_arm.bin ../jit_encode_check/jit_expected.txt .
+          ./jit_exec_check
 
       - name: 打包未签名 IPA 并上传产物
         working-directory: PipaRender
