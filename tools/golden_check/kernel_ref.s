@@ -27,7 +27,7 @@
 _kernel:
     // ---- 序言：a = clamp(round(frame) - frameStart, 0, frames-1) ----
     fcvtas  w8, s0                     // w8 = lround(frame)
-    sub     w8, w8, #4                 // - frameStart
+    sub     w8, w8, w4                 // - frameStart
     cmp     w8, #0
     csel    w8, wzr, w8, lt            // max(., 0)
     sub     w9, w2, #1                 // frames - 1
@@ -121,9 +121,14 @@ _kernel:
     fmadd    s28, s26, s15, s28
     fneg    s28, s28
     str     s28, [x7, 8]
-    fmul    s28, s24, s4
-    fmadd    s28, s25, s5, s28
-    fmadd    s28, s26, s6, s28
+    ldr     s28, [x6, 0]
+    fmul    s28, s28, s4
+    ldr     s29, [x6, 4]
+    fmul    s29, s29, s5
+    ldr     s30, [x6, 8]
+    fmul    s30, s30, s6
+    fadd    s28, s28, s29
+    fadd    s28, s28, s30
     fadd    s28, s28, s27
     str     s28, [x7, 12]
 
@@ -148,9 +153,14 @@ _kernel:
     fmadd    s28, s26, s15, s28
     fneg    s28, s28
     str     s28, [x7, 24]
-    fmul    s28, s24, s4
-    fmadd    s28, s25, s5, s28
-    fmadd    s28, s26, s6, s28
+    ldr     s28, [x6, 32]
+    fmul    s28, s28, s4
+    ldr     s29, [x6, 36]
+    fmul    s29, s29, s5
+    ldr     s30, [x6, 40]
+    fmul    s30, s30, s6
+    fadd    s28, s28, s29
+    fadd    s28, s28, s30
     fadd    s28, s28, s27
     str     s28, [x7, 28]
 
@@ -176,9 +186,14 @@ _kernel:
     fmadd    s28, s25, s12, s28
     fmadd    s28, s26, s15, s28
     str     s28, [x7, 40]
-    fmul    s28, s24, s4
-    fmadd    s28, s25, s5, s28
-    fmadd    s28, s26, s6, s28
+    ldr     s28, [x6, 16]
+    fmul    s28, s28, s4
+    ldr     s29, [x6, 20]
+    fmul    s29, s29, s5
+    ldr     s30, [x6, 24]
+    fmul    s30, s30, s6
+    fadd    s28, s28, s29
+    fadd    s28, s28, s30
     fadd    s28, s28, s27
     fneg    s28, s28
     str     s28, [x7, 44]
@@ -204,9 +219,14 @@ _kernel:
     fmadd    s28, s26, s15, s28
     fneg    s28, s28
     str     s28, [x7, 56]
-    fmul    s28, s24, s4
-    fmadd    s28, s25, s5, s28
-    fmadd    s28, s26, s6, s28
+    ldr     s28, [x6, 48]
+    fmul    s28, s28, s4
+    ldr     s29, [x6, 52]
+    fmul    s29, s29, s5
+    ldr     s30, [x6, 56]
+    fmul    s30, s30, s6
+    fadd    s28, s28, s29
+    fadd    s28, s28, s30
     fadd    s28, s28, s27
     str     s28, [x7, 60]
 

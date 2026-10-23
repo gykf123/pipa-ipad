@@ -41,7 +41,7 @@ public enum JITKernels {
         // ---- 序言：a = clamp(round(frame) - frameStart, 0, frames-1) ----
         // A64 无 GP 寄存器 smax/smin（仅 SIMD 向量形式），clamp 用 cmp+csel
         a.fcvtasW(8, 0)              // w8 = lround(frame)（整数帧无差）
-        a.subImm32(8, 8, 4)          // - frameStart
+        a.subReg(8, 8, 4)            // w8 -= frameStart（w4，运行时参数；原硬编码 #4 导致帧 1/2 全读成帧 0）
         a.cmpImm(8, 0)               // cmp w8, #0
         a.csel(8, 31, 8, .lt)        // w8 = (w8 < 0) ? 0 : w8      max(., 0)
         a.subImm32(9, 2, 1)          // w9 = frames - 1
@@ -125,10 +125,17 @@ public enum JITKernels {
             a.fmla(28, 26, R21, 28)
             if !row.neg { a.fneg(28, 28) }
             a.str32f(28, 7, ob + 8)
-            // col3 = f0*tx + f1*ty + f2*tz + A3
-            a.fmul(28, 24, 4)
-            a.fmla(28, 25, 5, 28)
-            a.fmla(28, 26, 6, 28)
+            // col3 = A[rx][0]*tx + A[rx][1]*ty + A[rx][2]*tz + A[rx][3]
+            // 关键：平移不受缩放 s 影响（local = T(t)·S(s)·R(q)，T 在 S·R 左侧），
+            // 旧实现用 f0=A[rx][0]*sx 乘 t 等于把平移错误缩放。
+            a.ldr32f(28, 6, ab + 0)
+            a.fmul(28, 28, 4)
+            a.ldr32f(29, 6, ab + 4)
+            a.fmul(29, 29, 5)
+            a.ldr32f(30, 6, ab + 8)
+            a.fmul(30, 30, 6)
+            a.fadd(28, 28, 29)
+            a.fadd(28, 28, 30)
             a.fadd(28, 28, 27)
             if row.neg { a.fneg(28, 28) }
             a.str32f(28, 7, ob + 12)

@@ -94,6 +94,10 @@ public final class JITAssembler {
     public func subImm32(_ rd: UInt32, _ rn: UInt32, _ imm: UInt32) {
         emit(0x5100_0000 | ((imm & 0xFFF) << 10) | (rn << 5) | rd)
     }
+    /// SUB Wd, Wn, Wm（移位寄存器形式，用于运行时寄存器相减，如减去 frameStart）
+    public func subReg(_ rd: UInt32, _ rn: UInt32, _ rm: UInt32) {
+        emit(0x4B00_0000 | (rm << 16) | (rn << 5) | rd)
+    }
     public func subsImm(_ rd: UInt32, _ rn: UInt32, _ imm: UInt32) {  // 32 位 SUBS（设标志）
         emit(0x7100_0000 | ((imm & 0xFFF) << 10) | (rn << 5) | rd)
     }

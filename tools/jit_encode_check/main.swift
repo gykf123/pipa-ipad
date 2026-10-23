@@ -36,7 +36,7 @@ func u32at(_ i: Int) -> UInt32 {
 // 编码与 tools/golden_check/kernel_ref.s 的 clang 交叉汇编结果逐字节一致（golden-bytes 兜底）
 let expectPrologue: [UInt32] = [
     0x1E24_0008,                       // fcvtas w8, s0
-    0x5100_1108,                       // sub  w8, w8, #4
+    0x4B04_0108,                       // sub  w8, w8, w4（减 frameStart，原硬编码 #4）
     0x7100_011F,                       // cmp  w8, #0
     0x1A88_B3E8,                       // csel w8, wzr, w8, lt
     0x5100_0449,                       // sub  w9, w2, #1
@@ -76,16 +76,16 @@ while i + 4 <= code.count {
     i += 4
 }
 check("MADD ×1", nMadd == 1, "\(nMadd)")
-check("FMLA ×35", nFmla == 35, "\(nFmla)")        // 3（q 归一化）+ 4 行 × 8
-check("FMUL ×47", nFmul == 47, "\(nFmul)")        // 1(q)+9(中间)+9(R)+4 行×7
+check("FMLA ×27", nFmla == 27, "\(nFmla)")        // 3（q 归一化）+ 4 行 × 6（col3 改重 load，减 2 FMLA/行）
+check("FMUL ×55", nFmul == 55, "\(nFmul)")        // 1(q)+9(中间)+9(R)+4 行×9（col3 改重 load 后乘 t，+2/行）
 check("FDIV ×1", nFdiv == 1, "\(nFdiv)")
-check("FADD ×10", nFadd == 10, "\(nFadd)")        // 6（R 矩阵）+ 4 行 col3
+check("FADD ×18", nFadd == 18, "\(nFadd)")        // 6（R 矩阵）+ 4 行×3（col3 重 load 后 3 次 fadd）
 check("FSUB ×6", nFsub == 6, "\(nFsub)")          // 3（R 对角）+ 3（R 非对角）
 check("FMAX ×1", nFmax == 1, "\(nFmax)")
 check("FNEG ×6", nFneg == 6, "\(nFneg)")          // 3 个 col2 + neg 行 3 个
 check("CSEL ×2", nCsel == 2, "\(nCsel)")
 check("RET ×1", nRet == 1, "\(nRet)")
-check("LDR(浮点) ×26", nLdr == 26, "\(nLdr)")     // q/t/s 10 + 行内 16
+check("LDR(浮点) ×38", nLdr == 38, "\(nLdr)")     // q/t/s 10 + 行内 16 + col3 重 load 3×4
 check("STR(浮点) ×16", nStr == 16, "\(nStr)")
 
 // literal 1e-20 位模式（f32 little-endian: 0x1E3CE508）
