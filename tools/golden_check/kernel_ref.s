@@ -39,8 +39,8 @@ _kernel:
 .Lloop:
     // 骨 track 指针：x11 = x0 + (a*bones+bone)*40 + charOff*4
     madd    w12, w8, w3, w10           // w12 = a*bones + bone
-    orr     x12, xzr, x12, lsl #5      // ×32（JITAssembler.lsl64 生成 ORR 别名形式；clang 规范化成 UBFM，语义等价）
-    add     x12, x12, x12, lsl #3      // ×40
+    orr     x12, xzr, x12, lsl #3      // ×8（JITAssembler.lsl64 生成 ORR 别名形式；clang 规范化成 UBFM，语义等价）
+    add     x12, x12, x12, lsl #2      // ×5（×8 + ×32 = ×40；原 lsl #3 误算成 ×288，bone≥1 越界读脏数据）
     add     x11, x0, x12
     add     x11, x11, x1, lsl #2       // + charOff*4
 

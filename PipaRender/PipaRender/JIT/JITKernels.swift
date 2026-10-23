@@ -55,8 +55,8 @@ public enum JITKernels {
 
         // 骨 track 指针：x11 = x0 + (a*bones+bone)*40 + charOff*4
         a.madd(12, 8, 3, 10)         // w12 = a*bones + bone
-        a.lsl64(12, 12, 5)           // ×32
-        a.addRegLSL(12, 12, 12, 3)   // ×40
+        a.lsl64(12, 12, 3)           // ×8
+        a.addRegLSL(12, 12, 12, 2)   // ×5（×8 + ×32 = ×40；原 lsl #5 + <<3 误算成 ×288，bone≥1 越界读脏数据）
         a.addReg(11, 0, 12)
         a.addRegLSL(11, 11, 1, 2)    // + charOff*4
 
